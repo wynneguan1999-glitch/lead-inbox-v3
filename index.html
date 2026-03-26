@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lead Inbox · 管理后台</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;background:#f4f3ef;color:#1a1a1a;min-height:100vh}
+
+/* ─── 配置弹窗 ─── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:2000}
+.overlay.hidden{display:none}
+.cfg-card{background:#fff;border-radius:16px;padding:32px;width:460px;max-width:90vw}
+.cfg-card h2{font-size:18px;font-weight:600;margin-bottom:6px}
+.cfg-card p{font-size:13px;color:#666;margin-bottom:22px;line-height:1.6}
+.cfg-card label{display:block;font-size:12px;color:#777;margin-bottom:4px;margin-top:13px}
+.cfg-card input{width:100%;padding:9px 11px;border:1px solid #e2e2e2;border-radius:8px;font-size:12px;font-family:monospace;color:#1a1a1a;outline:none;background:#fafafa}
+.cfg-card input:focus{border-color:#aaa;background:#fff}
+.cfg-btn{width:100%;margin-top:20px;padding:11px;background:#1a1a1a;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit}
+.cfg-btn:hover{opacity:.85}
+
+/* ─── 导航 ─── */
+.nav{background:#fff;border-bottom:1px solid #eee;padding:0 28px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.nav-logo{display:flex;align-items:center;gap:8px}
+.nav-dot{width:9px;height:9px;border-radius:50%;background:#FAC775}
+.nav-title{font-size:15px;font-weight:600}
+.nav-sub{font-size:12px;color:#bbb;margin-left:4px}
+.nav-right{display:flex;align-items:center;gap:8px}
+.sync-status{font-size:11px;color:#1D9E75;display:flex;align-items:center;gap:5px}
+.sync-dot{width:6px;height:6px;border-radius:50%;background:#1D9E75}
+.sync-dot.spin{background:#FAC775;animation:blink .7s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.nav-btn{padding:6px 13px;font-size:12px;border:1px solid #e4e4e4;border-radius:7px;background:#fff;color:#555;cursor:pointer;font-family:inherit}
+.nav-btn:hover{border-color:#aaa;color:#1a1a1a}
+
+/* ─── 主容器 ─── */
+.wrap{max-width:1140px;margin:0 auto;padding:26px 22px}
+
+/* ─── 统计卡片（Bug4修复：显示筛选后计数）─── */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:11px;margin-bottom:22px}
+.stat{background:#fff;border-radius:11px;padding:15px;border:1px solid #eee;transition:box-shadow .15s}
+.stat-lbl{font-size:11px;color:#bbb;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+.stat-val{font-size:24px;font-weight:600}
+.stat-sub{font-size:11px;color:#ddd;margin-top:2px}
+.stat-note{font-size:10px;color:#bbb;margin-top:3px}
+
+/* ─── 工具栏 ─── */
+.toolbar-wrap{background:#fff;border-radius:11px;border:1px solid #eee;padding:14px 16px;margin-bottom:14px}
+.toolbar-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.toolbar-row+.toolbar-row{margin-top:10px;padding-top:10px;border-top:1px solid #f4f4f4}
+.search-wrap{flex:1;min-width:200px;display:flex;align-items:center;background:#f7f7f5;border:1px solid #eee;border-radius:8px;padding:0 11px}
+.search-wrap input{flex:1;border:none;outline:none;font-size:13px;padding:8px 0;font-family:inherit;background:transparent;color:#1a1a1a}
+.search-ico{color:#ccc;font-size:13px;margin-right:6px}
+.filter-label{font-size:11px;color:#bbb;white-space:nowrap;margin-right:2px;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.pill{padding:5px 12px;font-size:12px;border:1px solid #e8e8e8;border-radius:18px;background:#fff;color:#666;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .12s}
+.pill:hover{border-color:#bbb;color:#333}
+.pill.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.pills-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.toolbar-btn{padding:6px 14px;font-size:12px;border:1px solid #e8e8e8;border-radius:8px;background:#fff;color:#555;cursor:pointer;font-family:inherit}
+.toolbar-btn:hover{border-color:#aaa}
+
+/* ─── 表格 ─── */
+.table-wrap{background:#fff;border-radius:13px;border:1px solid #eee;overflow:visible}/* overflow:visible 修复下拉被裁剪 */
+.t-head,.t-row{display:grid;grid-template-columns:minmax(0,2.2fr) 95px 110px 105px 115px 85px;gap:10px;padding:11px 18px;align-items:center}
+.t-head{font-size:11px;color:#bbb;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #f2f2f2;border-radius:13px 13px 0 0;background:#fff}
+.t-row{border-bottom:1px solid #fafafa;transition:background .1s;position:relative}
+.t-row:last-child{border-bottom:none}
+.t-row:hover{background:#fafafa}
+
+.lead-val{font-size:13px;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lead-val a{color:#378ADD;text-decoration:none}
+.lead-val a:hover{text-decoration:underline}
+.lead-sub{margin-top:3px;font-size:11px;color:#aaa;display:flex;flex-wrap:wrap;gap:6px}
+.contact-item{display:flex;align-items:center;gap:3px;white-space:nowrap}
+
+/* ─── 徽章 ─── */
+.badge{font-size:11px;font-weight:500;padding:3px 9px;border-radius:10px;display:inline-block;white-space:nowrap;cursor:pointer;border:1px solid transparent;transition:filter .12s}
+.badge:hover{filter:brightness(.94)}
+
+/* Bug2修复：下拉用 fixed 定位，避免被父元素 overflow 裁剪 */
+.inline-drop{
+  position:fixed;          /* ← 关键：fixed 不受父级 overflow 限制 */
+  background:#fff;
+  border:1px solid #e0e0e0;
+  border-radius:10px;
+  padding:5px;
+  min-width:120px;
+  max-height:260px;
+  overflow-y:auto;
+  z-index:1000;
+  box-shadow:0 6px 20px rgba(0,0,0,.12);
+  display:none;
+}
+.inline-drop.open{display:block}
+.drop-opt{padding:7px 10px;border-radius:6px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap}
+.drop-opt:hover{background:#f5f5f5}
+.drop-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* 添加人 */
+.who{display:flex;align-items:center;gap:6px}
+.who-av{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.who-name{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lead-time{font-size:11px;color:#bbb;white-space:nowrap}
+
+.row-btns{display:flex;gap:5px}
+.row-btn{padding:3px 9px;font-size:11px;border:1px solid #e8e8e8;border-radius:5px;cursor:pointer;background:transparent;color:#888;font-family:inherit}
+.row-btn:hover{border-color:#bbb;color:#333}
+.row-btn.del:hover{border-color:#D85A30;color:#D85A30;background:#FAECE7}
+
+.empty{padding:56px 20px;text-align:center;color:#ccc;font-size:14px}
+.result-count{font-size:12px;color:#aaa;padding:10px 18px;border-top:1px solid #f4f4f4;text-align:right}
+
+/* ─── 团队 ─── */
+.team-box{margin-top:22px;background:#fff;border-radius:13px;border:1px solid #eee;padding:18px}
+.box-title{font-size:11px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:13px}
+.team-list{display:flex;flex-wrap:wrap;gap:9px}
+.team-chip{display:flex;align-items:center;gap:7px;background:#fafafa;border:1px solid #eee;border-radius:18px;padding:5px 13px;cursor:pointer;transition:border-color .12s}
+.team-chip:hover{border-color:#bbb}
+.team-chip.on{border-color:#1a1a1a;background:#f0f0f0}
+.team-av{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+.team-n{font-size:13px}
+.team-c{font-size:12px;color:#aaa}
+
+/* ─── 设置抽屉 ─── */
+.drawer{position:fixed;top:0;right:-400px;width:380px;height:100vh;background:#fff;border-left:1px solid #eee;z-index:500;transition:right .25s ease;overflow-y:auto;padding:24px}
+.drawer.open{right:0}
+.drawer-title{font-size:16px;font-weight:600;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
+.drawer-close{background:none;border:none;cursor:pointer;font-size:20px;color:#aaa;line-height:1}
+.drawer-close:hover{color:#333}
+.drawer-sec{margin-bottom:28px}
+.drawer-sec h3{font-size:12px;color:#999;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+.cfg-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid #f0f0f0;margin-bottom:7px;background:#fafafa}
+.cfg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.cfg-name{flex:1;font-size:13px}
+.cfg-del{background:none;border:none;cursor:pointer;color:#ddd;font-size:14px;padding:2px 4px}
+.cfg-del:hover{color:#D85A30}
+.add-row{display:flex;gap:7px;margin-top:10px}
+.add-row input{flex:1;padding:8px 10px;border:1px solid #e4e4e4;border-radius:7px;font-size:13px;font-family:inherit;outline:none;background:#fafafa}
+.add-row input:focus{border-color:#aaa;background:#fff}
+.color-pick{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.color-sw{width:20px;height:20px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .1s}
+.color-sw:hover{transform:scale(1.15)}
+.color-sw.on{border-color:#1a1a1a}
+.add-ok{padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0}
+.add-ok:hover{opacity:.85}
+</style>
+</head>
+<body>
+
+<!-- 配置弹窗 -->
+<div class="overlay" id="overlay">
+  <div class="cfg-card">
+    <h2>连接数据库</h2>
+    <p>填写 Supabase 信息后即可访问你的线索库，配置只保存在本浏览器中。</p>
+    <label>Supabase 项目 URL</label>
+    <input id="cfg-url" placeholder="https://xxxx.supabase.co"/>
+    <label>Supabase Anon Key</label>
+    <input id="cfg-key" placeholder="eyJhbGci..."/>
+    <button class="cfg-btn" id="btn-connect">进入管理后台</button>
+  </div>
+</div>
+
+<!-- 导航 -->
+<nav class="nav">
+  <div class="nav-logo">
+    <div class="nav-dot"></div>
+    <span class="nav-title">Lead Inbox</span>
+    <span class="nav-sub">管理后台</span>
+  </div>
+  <div class="nav-right">
+    <div class="sync-status"><div class="sync-dot" id="sdot"></div><span id="stxt">已同步</span></div>
+    <button class="nav-btn" onclick="loadAll()">刷新</button>
+    <button class="nav-btn" onclick="openDrawer()">⚙ 自定义</button>
+    <button class="nav-btn" onclick="resetCfg()">重新配置</button>
+  </div>
+</nav>
+
+<!-- 主内容 -->
+<div class="wrap">
+
+  <!-- Bug4修复：统计卡片显示筛选后结果 -->
+  <div class="stats">
+    <div class="stat"><div class="stat-lbl">筛选结果</div><div class="stat-val" id="s0">—</div><div class="stat-note" id="s0-note"></div></div>
+    <div class="stat"><div class="stat-lbl">待触达</div><div class="stat-val" id="s1">—</div><div class="stat-note" id="s1-note"></div></div>
+    <div class="stat"><div class="stat-lbl">建联中</div><div class="stat-val" id="s2">—</div><div class="stat-note" id="s2-note"></div></div>
+    <div class="stat"><div class="stat-lbl">合作中</div><div class="stat-val" id="s3">—</div><div class="stat-note" id="s3-note"></div></div>
+    <div class="stat"><div class="stat-lbl">本周新增</div><div class="stat-val" id="s4">—</div><div class="stat-note" id="s4-note"></div></div>
+  </div>
+
+  <!-- 工具栏 -->
+  <div class="toolbar-wrap">
+    <!-- 第一行：搜索 + 导出 -->
+    <div class="toolbar-row">
+      <div class="search-wrap">
+        <span class="search-ico">🔍</span>
+        <input id="q" placeholder="搜索线索、姓名、渠道、状态..." oninput="applyFilters()"/>
+      </div>
+      <button class="toolbar-btn" onclick="exportCSV()">导出 CSV</button>
+    </div>
+    <!-- 第二行：渠道 -->
+    <div class="toolbar-row">
+      <span class="filter-label">渠道</span>
+      <div class="pills-row" id="ch-pills"></div>
+    </div>
+    <!-- 第三行：状态 -->
+    <div class="toolbar-row">
+      <span class="filter-label">状态</span>
+      <div class="pills-row" id="st-pills"></div>
+    </div>
+    <!-- Bug4修复：时间筛选 -->
+    <div class="toolbar-row">
+      <span class="filter-label">时间</span>
+      <div class="pills-row" id="time-pills">
+        <button class="pill on" data-time="all">全部</button>
+        <button class="pill" data-time="today">今天</button>
+        <button class="pill" data-time="week">本周</button>
+        <button class="pill" data-time="month">本月</button>
+      </div>
+    </div>
+    <!-- Bug4修复：负责人筛选 -->
+    <div class="toolbar-row">
+      <span class="filter-label">负责人</span>
+      <div class="pills-row" id="who-pills"><button class="pill on" data-who="all">全部</button></div>
+    </div>
+  </div>
+
+  <!-- 表格 -->
+  <div class="table-wrap" id="table-wrap">
+    <div class="t-head">
+      <div>线索内容 / 联系人</div>
+      <div>渠道</div>
+      <div>状态</div>
+      <div>负责人</div>
+      <div>时间</div>
+      <div>操作</div>
+    </div>
+    <div id="tbody"><div class="empty">正在加载...</div></div>
+    <div class="result-count" id="result-count" style="display:none"></div>
+  </div>
+
+  <!-- 团队贡献（Bug4修复：点击可按负责人筛选）-->
+  <div class="team-box" id="team-box" style="display:none">
+    <div class="box-title">团队贡献（点击按负责人筛选）</div>
+    <div class="team-list" id="team-list"></div>
+  </div>
+</div>
+
+<!-- 设置抽屉 -->
+<div class="drawer" id="drawer">
+  <div class="drawer-title">自定义配置<button class="drawer-close" onclick="closeDrawer()">×</button></div>
+  <div class="drawer-sec">
+    <h3>渠道管理</h3>
+    <div id="ch-list"></div>
+    <div class="add-row"><input id="new-ch" placeholder="渠道名称" maxlength="20"/><button class="add-ok" onclick="addChannel()">添加</button></div>
+    <div class="color-pick" id="ch-swatches"></div>
+  </div>
+  <div class="drawer-sec">
+    <h3>状态管理</h3>
+    <div id="st-list"></div>
+    <div class="add-row"><input id="new-st" placeholder="状态名称" maxlength="20"/><button class="add-ok" onclick="addStatus()">添加</button></div>
+    <div class="color-pick" id="st-swatches"></div>
+  </div>
+</div>
+
+<!-- Bug2修复：全局共用一个 fixed 下拉，挂在 body 上，不受任何父级 overflow 限制 -->
+<div class="inline-drop" id="global-drop"></div>
+
+<script>
+// ═══════════════════════════════════════════
+// 数据
+// ═══════════════════════════════════════════
+let C={url:'',key:''};
+let allLeads=[], allChannels=[], allStatuses=[];
+let fCh='all', fSt='all', fTime='all', fWho='all';
+let newChColor='pink', newStColor='blue';
+let openDropId=null, openDropType=null;  // 当前打开的下拉
+
+const COLORS={
+  pink:['#FBEAF0','#99234E'], blue:['#E6F1FB','#185FA5'], teal:['#E1F5EE','#085041'],
+  green:['#EAF3DE','#27500A'], amber:['#FAEEDA','#633806'], purple:['#EEEDFE','#3C3489'],
+  coral:['#FAECE7','#712B13'], gray:['#f0f0f0','#666']
+};
+const COLOR_NAMES=['pink','blue','teal','green','amber','purple','coral','gray'];
+const AVATAR_C=[['#E6F1FB','#185FA5'],['#E1F5EE','#085041'],['#FAEEDA','#633806'],
+                ['#FBEAF0','#72243E'],['#EEEDFE','#3C3489'],['#EAF3DE','#27500A']];
+function nameColor(n){if(!n)return AVATAR_C[0];let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))&0x7fffffff;return AVATAR_C[h%AVATAR_C.length]}
+function badgeStyle(color){const[bg,t]=(COLORS[color]||COLORS.gray);return`background:${bg};color:${t}`}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function fmtDate(ts){const d=new Date(ts);return`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`}
+
+// ═══════════════════════════════════════════
+// API
+// ═══════════════════════════════════════════
+async function api(path,opts={}){
+  const r=await fetch(`${C.url}/rest/v1${path}`,{...opts,headers:{'apikey':C.key,'Authorization':`Bearer ${C.key}`,'Content-Type':'application/json',...(opts.headers||{})}});
+  if(!r.ok)throw new Error(await r.text());
+  const t=await r.text();return t?JSON.parse(t):null;
+}
+
+async function loadAll(){
+  setSyncing(true);
+  try{
+    [allLeads,allChannels,allStatuses]=await Promise.all([
+      api('/leads?select=*&order=created_at.desc'),
+      api('/lead_channels?select=*&order=sort_order'),
+      api('/lead_statuses?select=*&order=sort_order')
+    ]);
+    buildWhoPills();
+    renderFilterPills();
+    applyFilters();
+    renderTeam();
+    renderDrawer();
+  }catch(e){
+    document.getElementById('tbody').innerHTML=`<div class="empty">加载失败：${esc(e.message)}</div>`;
+  }finally{setSyncing(false)}
+}
+
+// ═══════════════════════════════════════════
+// 筛选 & 统计（Bug4修复）
+// ═══════════════════════════════════════════
+function getTimeRange(){
+  const now=new Date(), d=new Date();
+  if(fTime==='today'){ d.setHours(0,0,0,0); return d.getTime(); }
+  if(fTime==='week'){ d.setDate(now.getDate()-now.getDay()); d.setHours(0,0,0,0); return d.getTime(); }
+  if(fTime==='month'){ d.setDate(1); d.setHours(0,0,0,0); return d.getTime(); }
+  return 0;
+}
+
+function getFiltered(){
+  const q=document.getElementById('q').value.toLowerCase();
+  const since=getTimeRange();
+  return allLeads.filter(l=>{
+    if(fCh!=='all'&&l.channel!==fCh) return false;
+    if(fSt!=='all'&&l.status!==fSt) return false;
+    if(fWho!=='all'&&(l.added_by||'未知')!==fWho) return false;
+    if(since&&new Date(l.created_at).getTime()<since) return false;
+    if(!q) return true;
+    return [l.value,l.added_by,l.channel,l.status,l.contact_name,l.phone,l.email_contact,l.wechat,l.note]
+      .filter(Boolean).some(v=>String(v).toLowerCase().includes(q));
+  });
+}
+
+function applyFilters(){
+  const filtered=getFiltered();
+  renderStats(filtered);
+  renderTable(filtered);
+}
+
+function renderStats(filtered){
+  const total=filtered.length;
+  const allTotal=allLeads.length;
+  document.getElementById('s0').textContent=total;
+  document.getElementById('s0-note').textContent=total===allTotal?`共 ${allTotal} 条`:`共 ${allTotal} 条中`;
+  // 其他统计基于当前筛选结果
+  const pending=filtered.filter(l=>l.status==='待触达').length;
+  const contacting=filtered.filter(l=>l.status==='建联中').length;
+  const cooperating=filtered.filter(l=>l.status==='合作中').length;
+  const week=Date.now()-7*86400000;
+  const newThisWeek=filtered.filter(l=>new Date(l.created_at)>week).length;
+  document.getElementById('s1').textContent=pending;
+  document.getElementById('s1-note').textContent=filtered.length?`占比 ${Math.round(pending/filtered.length*100)}%`:'';
+  document.getElementById('s2').textContent=contacting;
+  document.getElementById('s2-note').textContent='';
+  document.getElementById('s3').textContent=cooperating;
+  document.getElementById('s3-note').textContent='';
+  document.getElementById('s4').textContent=newThisWeek;
+  document.getElementById('s4-note').textContent=fTime==='all'?'近 7 天':'当前时段内';
+}
+
+// ═══════════════════════════════════════════
+// 筛选 Pills（渠道/状态/时间/负责人）
+// ═══════════════════════════════════════════
+function renderFilterPills(){
+  // 渠道
+  let h=`<button class="pill${fCh==='all'?' on':''}" onclick="setFCh('all')">全部</button>`;
+  allChannels.forEach(c=>{h+=`<button class="pill${fCh===c.name?' on':''}" onclick="setFCh('${esc(c.name)}')">${esc(c.name)}</button>`;});
+  document.getElementById('ch-pills').innerHTML=h;
+  // 状态
+  let s=`<button class="pill${fSt==='all'?' on':''}" onclick="setFSt('all')">全部</button>`;
+  allStatuses.forEach(st=>{s+=`<button class="pill${fSt===st.name?' on':''}" onclick="setFSt('${esc(st.name)}')">${esc(st.name)}</button>`;});
+  document.getElementById('st-pills').innerHTML=s;
+  // 时间 pills 不需要重建，只同步 .on 状态
+  document.querySelectorAll('#time-pills .pill').forEach(p=>p.classList.toggle('on',p.dataset.time===fTime));
+  // 负责人
+  syncWhoPills();
+}
+
+function buildWhoPills(){
+  const names=new Set(allLeads.map(l=>l.added_by||'未知').filter(Boolean));
+  let h=`<button class="pill on" data-who="all">全部</button>`;
+  names.forEach(n=>{h+=`<button class="pill" data-who="${esc(n)}">${esc(n)}</button>`;});
+  document.getElementById('who-pills').innerHTML=h;
+  document.querySelectorAll('#who-pills .pill').forEach(p=>{
+    p.addEventListener('click',()=>{ fWho=p.dataset.who; syncWhoPills(); applyFilters(); renderTeam(); });
+  });
+}
+
+function syncWhoPills(){
+  document.querySelectorAll('#who-pills .pill').forEach(p=>p.classList.toggle('on',p.dataset.who===fWho));
+}
+
+function setFCh(v){fCh=v;renderFilterPills();applyFilters();}
+function setFSt(v){fSt=v;renderFilterPills();applyFilters();}
+
+// 时间 pills 事件（用事件委托）
+document.getElementById('time-pills') && void 0; // will bind after DOMContentLoaded
+
+// ═══════════════════════════════════════════
+// 渲染表格（Bug1修复：渠道也可内联编辑）
+// ═══════════════════════════════════════════
+function chColor(name){const c=allChannels.find(x=>x.name===name);return c?.color||'gray'}
+function stColor(name){const s=allStatuses.find(x=>x.name===name);return s?.color||'gray'}
+
+function renderTable(filtered){
+  const tbody=document.getElementById('tbody');
+  const countEl=document.getElementById('result-count');
+  if(!filtered||!filtered.length){
+    tbody.innerHTML='<div class="empty">暂无线索</div>';
+    countEl.style.display='none';
+    return;
+  }
+
+  tbody.innerHTML=filtered.map(l=>{
+    const contacts=[];
+    if(l.contact_name)contacts.push(`<span class="contact-item">👤 ${esc(l.contact_name)}</span>`);
+    if(l.phone)contacts.push(`<span class="contact-item">📱 ${esc(l.phone)}</span>`);
+    if(l.email_contact)contacts.push(`<span class="contact-item">✉ ${esc(l.email_contact)}</span>`);
+    if(l.wechat)contacts.push(`<span class="contact-item">💬 ${esc(l.wechat)}</span>`);
+    if(l.note)contacts.push(`<span class="contact-item" style="color:#bbb;font-style:italic">${esc(l.note)}</span>`);
+    const isUrl=l.value.startsWith('http');
+    const valHtml=isUrl?`<a href="${esc(l.value)}" target="_blank" title="${esc(l.value)}">${esc(l.value)}</a>`:esc(l.value);
+
+    // Bug1修复：渠道也有点击下拉
+    const cc=chColor(l.channel);
+    const sc=stColor(l.status);
+    const [ab,at]=nameColor(l.added_by);
+    const ini=(l.added_by||'?').charAt(0).toUpperCase();
+
+    return `
+    <div class="t-row">
+      <div>
+        <div class="lead-val">${valHtml}</div>
+        ${contacts.length?`<div class="lead-sub">${contacts.join('')}</div>`:''}
+      </div>
+      <div>
+        <span class="badge" style="${badgeStyle(cc)}"
+          onclick="openDrop('${l.id}','ch',this)">${esc(l.channel||'—')}</span>
+      </div>
+      <div>
+        <span class="badge" style="${badgeStyle(sc)}"
+          onclick="openDrop('${l.id}','st',this)">${esc(l.status||'—')}</span>
+      </div>
+      <div class="who">
+        <div class="who-av" style="background:${ab};color:${at}">${ini}</div>
+        <span class="who-name">${esc(l.added_by||'未知')}</span>
+      </div>
+      <div class="lead-time">${fmtDate(l.created_at)}</div>
+      <div class="row-btns">
+        <button class="row-btn" onclick="copyVal('${esc(l.value)}')">复制</button>
+        <button class="row-btn del" onclick="deleteLead('${l.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // 显示结果计数
+  countEl.style.display='block';
+  const total=allLeads.length;
+  countEl.textContent=filtered.length===total?`共 ${total} 条线索`:`筛选结果：${filtered.length} 条（共 ${total} 条）`;
+}
+
+// ═══════════════════════════════════════════
+// Bug2修复：全局唯一下拉，fixed 定位
+// ═══════════════════════════════════════════
+function openDrop(leadId, type, anchorEl){
+  const drop=document.getElementById('global-drop');
+
+  // 如果已经打开同一个，则关闭
+  if(openDropId===leadId&&openDropType===type){
+    closeDrop(); return;
+  }
+
+  // 构建选项
+  const options = type==='ch' ? allChannels : allStatuses;
+  drop.innerHTML=options.map(o=>{
+    const [bg]=COLORS[o.color]||COLORS.gray;
+    return `<div class="drop-opt" data-id="${esc(leadId)}" data-type="${type}" data-val="${esc(o.name)}">
+      <span class="drop-dot" style="background:${bg}"></span>${esc(o.name)}
+    </div>`;
+  }).join('');
+
+  // Fixed 定位到按钮正下方
+  const rect=anchorEl.getBoundingClientRect();
+  const spaceBelow=window.innerHeight-rect.bottom;
+  drop.style.minWidth=Math.max(120,rect.width+40)+'px';
+
+  if(spaceBelow<200){
+    // 空间不够，显示在上方
+    drop.style.top='';
+    drop.style.bottom=(window.innerHeight-rect.top+4)+'px';
+  } else {
+    drop.style.bottom='';
+    drop.style.top=(rect.bottom+4)+'px';
+  }
+  drop.style.left=rect.left+'px';
+  drop.classList.add('open');
+  openDropId=leadId; openDropType=type;
+}
+
+function closeDrop(){
+  document.getElementById('global-drop').classList.remove('open');
+  openDropId=null; openDropType=null;
+}
+
+// 全局下拉点击委托
+document.addEventListener('click', e=>{
+  const opt=e.target.closest('.drop-opt');
+  if(opt){
+    const id=opt.dataset.id, type=opt.dataset.type, val=opt.dataset.val;
+    closeDrop();
+    if(type==='ch') updateLeadField(id,'channel',val);
+    else            updateLeadField(id,'status',val);
+    return;
+  }
+  // 点击其他地方关闭下拉
+  if(!e.target.closest('.badge')){ closeDrop(); }
+});
+
+async function updateLeadField(id, field, value){
+  setSyncing(true);
+  try{
+    await api(`/leads?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({[field]:value})});
+    const l=allLeads.find(x=>x.id===id);
+    if(l) l[field]=value;
+    applyFilters();
+    renderTeam();
+  }catch(e){alert('更新失败：'+e.message);}
+  finally{setSyncing(false);}
+}
+
+async function deleteLead(id){
+  if(!confirm('确认删除？'))return;
+  try{
+    await api(`/leads?id=eq.${id}`,{method:'DELETE'});
+    allLeads=allLeads.filter(x=>x.id!==id);
+    buildWhoPills();
+    applyFilters();
+    renderTeam();
+  }catch(e){alert('删除失败：'+e.message);}
+}
+
+// ═══════════════════════════════════════════
+// 团队贡献（Bug4修复：点击按负责人筛选）
+// ═══════════════════════════════════════════
+function renderTeam(){
+  const filtered=getFiltered();
+  const cnt={};
+  filtered.forEach(l=>{const n=l.added_by||'未知';cnt[n]=(cnt[n]||0)+1});
+  const members=Object.keys(cnt);
+  const box=document.getElementById('team-box');
+  if(!members.length){box.style.display='none';return;}
+  box.style.display='block';
+  document.getElementById('team-list').innerHTML=members.sort((a,b)=>cnt[b]-cnt[a]).map(n=>{
+    const[ab,at]=nameColor(n);
+    const isActive=fWho===n;
+    return `<div class="team-chip${isActive?' on':''}" onclick="clickWho('${esc(n)}')">
+      <div class="team-av" style="background:${ab};color:${at}">${n.charAt(0).toUpperCase()}</div>
+      <span class="team-n">${esc(n)}</span>
+      <span class="team-c">${cnt[n]} 条</span>
+    </div>`;
+  }).join('');
+}
+
+function clickWho(name){
+  fWho= fWho===name ? 'all' : name;
+  syncWhoPills();
+  applyFilters();
+  renderTeam();
+}
+
+// ═══════════════════════════════════════════
+// 设置抽屉（渠道/状态自定义）
+// ═══════════════════════════════════════════
+function renderDrawer(){
+  document.getElementById('ch-list').innerHTML=allChannels.map(c=>{
+    const[bg]=COLORS[c.color]||COLORS.gray;
+    return`<div class="cfg-item"><span class="cfg-dot" style="background:${bg}"></span><span class="cfg-name">${esc(c.name)}</span><button class="cfg-del" onclick="delChannel('${c.id}','${esc(c.name)}')">×</button></div>`;
+  }).join('');
+  document.getElementById('st-list').innerHTML=allStatuses.map(s=>{
+    const[bg]=COLORS[s.color]||COLORS.gray;
+    return`<div class="cfg-item"><span class="cfg-dot" style="background:${bg}"></span><span class="cfg-name">${esc(s.name)}</span><button class="cfg-del" onclick="delStatus('${s.id}','${esc(s.name)}')">×</button></div>`;
+  }).join('');
+  renderSwatches('ch-swatches','ch',newChColor);
+  renderSwatches('st-swatches','st',newStColor);
+}
+
+function renderSwatches(id,prefix,current){
+  document.getElementById(id).innerHTML=COLOR_NAMES.map(c=>{
+    const[bg]=COLORS[c];
+    return`<div class="color-sw${c===current?' on':''}" style="background:${bg}" onclick="pickColor('${prefix}','${c}')"></div>`;
+  }).join('');
+}
+
+function pickColor(prefix,color){
+  if(prefix==='ch')newChColor=color; else newStColor=color;
+  renderDrawer();
+}
+
+async function addChannel(){
+  const name=document.getElementById('new-ch').value.trim();
+  if(!name||allChannels.find(c=>c.name===name)){alert(name?'渠道已存在':'请填写名称');return}
+  const row=await api('/lead_channels',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify({name,color:newChColor,sort_order:allChannels.length+1})});
+  if(row)allChannels.push(Array.isArray(row)?row[0]:row);
+  document.getElementById('new-ch').value='';
+  renderFilterPills();renderDrawer();
+}
+
+async function addStatus(){
+  const name=document.getElementById('new-st').value.trim();
+  if(!name||allStatuses.find(s=>s.name===name)){alert(name?'状态已存在':'请填写名称');return}
+  const row=await api('/lead_statuses',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify({name,color:newStColor,sort_order:allStatuses.length+1})});
+  if(row)allStatuses.push(Array.isArray(row)?row[0]:row);
+  document.getElementById('new-st').value='';
+  renderFilterPills();renderDrawer();applyFilters();
+}
+
+async function delChannel(id,name){
+  if(!confirm(`删除渠道「${name}」？`))return;
+  await api(`/lead_channels?id=eq.${id}`,{method:'DELETE'});
+  allChannels=allChannels.filter(c=>c.id!==id);
+  renderFilterPills();renderDrawer();
+}
+
+async function delStatus(id,name){
+  if(!confirm(`删除状态「${name}」？`))return;
+  await api(`/lead_statuses?id=eq.${id}`,{method:'DELETE'});
+  allStatuses=allStatuses.filter(s=>s.id!==id);
+  renderFilterPills();renderDrawer();applyFilters();
+}
+
+function openDrawer(){document.getElementById('drawer').classList.add('open')}
+function closeDrawer(){document.getElementById('drawer').classList.remove('open')}
+
+// ═══════════════════════════════════════════
+// 导出
+// ═══════════════════════════════════════════
+function exportCSV(){
+  const rows=getFiltered();
+  if(!rows.length){alert('没有可导出的数据');return}
+  const hdr=['线索内容','渠道','状态','姓名','手机','邮箱','微信','备注','负责人','添加时间'];
+  const body=rows.map(l=>[l.value,l.channel,l.status,l.contact_name||'',l.phone||'',l.email_contact||'',l.wechat||'',l.note||'',l.added_by||'',fmtDate(l.created_at)].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
+  const csv='\uFEFF'+[hdr.join(','),...body].join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download=`leads-${new Date().toISOString().slice(0,10)}.csv`;a.click();
+}
+
+function copyVal(v){navigator.clipboard?.writeText(v)}
+
+// ═══════════════════════════════════════════
+// 配置
+// ═══════════════════════════════════════════
+function saveConfig(){
+  const url=document.getElementById('cfg-url').value.trim().replace(/\/$/,'');
+  const key=document.getElementById('cfg-key').value.trim();
+  if(!url||!key){alert('请填写完整信息');return}
+  C={url,key};localStorage.setItem('liCfg',JSON.stringify(C));
+  document.getElementById('overlay').classList.add('hidden');
+  loadAll();setInterval(loadAll,30000);
+}
+
+function resetCfg(){localStorage.removeItem('liCfg');location.reload();}
+function setSyncing(v){document.getElementById('sdot').classList.toggle('spin',v);document.getElementById('stxt').textContent=v?'同步中...':'已同步'}
+
+// ═══════════════════════════════════════════
+// 初始化
+// ═══════════════════════════════════════════
+document.addEventListener('DOMContentLoaded',()=>{
+  // 时间筛选事件委托
+  document.getElementById('time-pills').addEventListener('click',e=>{
+    const p=e.target.closest('.pill');
+    if(!p)return;
+    fTime=p.dataset.time;
+    document.querySelectorAll('#time-pills .pill').forEach(x=>x.classList.toggle('on',x.dataset.time===fTime));
+    applyFilters();
+  });
+
+  document.getElementById('btn-connect').addEventListener('click',saveConfig);
+
+  const saved=localStorage.getItem('liCfg');
+  if(saved){
+    try{C=JSON.parse(saved);document.getElementById('overlay').classList.add('hidden');loadAll();setInterval(loadAll,30000);}
+    catch(e){}
+  }
+});
+</script>
+</body>
+</html>
