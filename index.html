@@ -140,7 +140,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 
 .lead-time{font-size:11px;color:#bbb;white-space:nowrap}
 .empty{padding:56px 20px;text-align:center;color:#ccc;font-size:14px}
-.result-count{font-size:12px;color:#aaa;padding:10px 18px;border-top:1px solid #f4f4f4;text-align:right}
+
+/* ─── 分页栏 ─── */
+.pagination{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-top:1px solid #f2f2f2;flex-wrap:wrap;gap:10px}
+.pagination.hidden{display:none}
+.page-info{font-size:12px;color:#aaa;white-space:nowrap}
+.page-info b{color:#555;font-weight:600}
+.page-btns{display:flex;align-items:center;gap:4px}
+.page-btn{min-width:32px;height:30px;padding:0 8px;border:1px solid #e8e8e8;border-radius:7px;background:#fff;color:#666;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;transition:all .12s}
+.page-btn:hover:not(:disabled){border-color:#bbb;color:#333}
+.page-btn:disabled{opacity:.35;cursor:default}
+.page-btn.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a;font-weight:500}
+.page-ellipsis{font-size:12px;color:#bbb;padding:0 4px;line-height:30px}
+.page-jump{display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa;white-space:nowrap}
+.page-jump input{width:48px;height:30px;padding:0 8px;border:1px solid #e8e8e8;border-radius:7px;font-size:12px;font-family:inherit;text-align:center;outline:none;color:#1a1a1a;background:#fafafa}
+.page-jump input:focus{border-color:#aaa;background:#fff}
+.page-jump button{height:30px;padding:0 11px;border:1px solid #e8e8e8;border-radius:7px;background:#fff;color:#555;font-size:12px;cursor:pointer;font-family:inherit}
+.page-jump button:hover{border-color:#bbb;color:#333}
 
 /* ─── 团队 ─── */
 .team-box{margin-top:22px;background:#fff;border-radius:13px;border:1px solid #eee;padding:18px}
@@ -280,7 +296,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
       <div>操作</div>
     </div>
     <div id="tbody"><div class="empty">正在加载...</div></div>
-    <div class="result-count" id="result-count" style="display:none"></div>
+    <!-- 分页栏 -->
+    <div class="pagination hidden" id="pagination">
+      <div class="page-info" id="page-info"></div>
+      <div class="page-btns" id="page-btns"></div>
+      <div class="page-jump">
+        跳至第
+        <input type="number" id="jump-input" min="1" placeholder=""/>
+        页
+        <button onclick="jumpToPage()">跳转</button>
+      </div>
+    </div>
   </div>
 
   <!-- 团队贡献 -->
@@ -326,6 +352,8 @@ let allLeads=[], allChannels=[], allStatuses=[], allQualities=[];
 let fCh='all', fSt='all', fQl='all', fTime='all', fWho='all';
 let newChColor='pink', newStColor='blue', newQlColor='teal';
 let openDropId=null, openDropType=null;
+const PAGE_SIZE=15;
+let currentPage=1;
 
 // 转让相关
 let transferLeadId=null, transferSelectedMember=null;
@@ -402,7 +430,8 @@ function getFiltered(){
   });
 }
 
-function applyFilters(){
+function applyFilters(resetPage=true){
+  if(resetPage) currentPage=1;
   const filtered=getFiltered();
   renderStats(filtered);
   renderTable(filtered);
@@ -474,14 +503,19 @@ function qlColor(name){return allQualities.find(x=>x.name===name)?.color||'gray'
 
 function renderTable(filtered){
   const tbody=document.getElementById('tbody');
-  const countEl=document.getElementById('result-count');
+  const pgEl=document.getElementById('pagination');
   if(!filtered?.length){
     tbody.innerHTML='<div class="empty">暂无线索</div>';
-    countEl.style.display='none';
+    pgEl.classList.add('hidden');
     return;
   }
 
-  tbody.innerHTML=filtered.map(l=>{
+  const totalPages=Math.ceil(filtered.length/PAGE_SIZE);
+  if(currentPage>totalPages) currentPage=totalPages;
+  const start=(currentPage-1)*PAGE_SIZE;
+  const pageRows=filtered.slice(start,start+PAGE_SIZE);
+
+  tbody.innerHTML=pageRows.map(l=>{
     const contacts=[];
     if(l.contact_name)contacts.push(`<span class="contact-item">👤 ${esc(l.contact_name)}</span>`);
     if(l.phone)contacts.push(`<span class="contact-item">📱 ${esc(l.phone)}</span>`);
@@ -494,7 +528,6 @@ function renderTable(filtered){
     const [ab,at]=nameColor(l.added_by);
     const ini=(l.added_by||'?').charAt(0).toUpperCase();
 
-    // 质量徽章：有值显示彩色大徽章，无值显示虚线占位
     const qlHtml = l.quality
       ? `<span class="badge-quality" style="${badgeStyle(qlColor(l.quality))}" onclick="openDrop('${l.id}','ql',this)">${esc(l.quality)}</span>`
       : `<button class="badge-empty" onclick="openDrop('${l.id}','ql',this)">+ 标记</button>`;
@@ -521,10 +554,61 @@ function renderTable(filtered){
     </div>`;
   }).join('');
 
-  countEl.style.display='block';
-  countEl.textContent=filtered.length===allLeads.length
-    ?`共 ${allLeads.length} 条线索`
-    :`筛选结果：${filtered.length} 条（共 ${allLeads.length} 条）`;
+  renderPagination(filtered.length, totalPages);
+}
+
+function renderPagination(total, totalPages){
+  const pgEl=document.getElementById('pagination');
+  const infoEl=document.getElementById('page-info');
+  const btnsEl=document.getElementById('page-btns');
+  const jumpEl=document.getElementById('jump-input');
+
+  pgEl.classList.remove('hidden');
+
+  const start=(currentPage-1)*PAGE_SIZE+1;
+  const end=Math.min(currentPage*PAGE_SIZE,total);
+  const allTotal=allLeads.length;
+  infoEl.innerHTML=total===allTotal
+    ?`第 <b>${start}–${end}</b> 条，共 <b>${total}</b> 条`
+    :`筛选 <b>${total}</b> 条中第 <b>${start}–${end}</b> 条（共 ${allTotal} 条）`;
+
+  jumpEl.max=totalPages;
+  jumpEl.value='';
+
+  // 页码按钮：最多显示 7 个（首、尾、当前±2、省略号）
+  const pages=[];
+  if(totalPages<=7){
+    for(let i=1;i<=totalPages;i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if(currentPage>3) pages.push('…');
+    for(let i=Math.max(2,currentPage-1);i<=Math.min(totalPages-1,currentPage+1);i++) pages.push(i);
+    if(currentPage<totalPages-2) pages.push('…');
+    pages.push(totalPages);
+  }
+
+  let html=`<button class="page-btn" ${currentPage===1?'disabled':''} onclick="goPage(${currentPage-1})">‹ 上页</button>`;
+  pages.forEach(p=>{
+    if(p==='…'){html+=`<span class="page-ellipsis">…</span>`;}
+    else{html+=`<button class="page-btn${p===currentPage?' on':''}" onclick="goPage(${p})">${p}</button>`;}
+  });
+  html+=`<button class="page-btn" ${currentPage===totalPages?'disabled':''} onclick="goPage(${currentPage+1})">下页 ›</button>`;
+  btnsEl.innerHTML=html;
+}
+
+function goPage(p){
+  const filtered=getFiltered();
+  const totalPages=Math.ceil(filtered.length/PAGE_SIZE);
+  if(p<1||p>totalPages) return;
+  currentPage=p;
+  renderTable(filtered);
+  // 翻页后滚回表格顶部
+  document.querySelector('.table-wrap').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function jumpToPage(){
+  const val=parseInt(document.getElementById('jump-input').value);
+  if(!isNaN(val)) goPage(val);
 }
 
 // ═══════════════════════════════════════════
@@ -756,8 +840,18 @@ function exportCSV(){
 function copyVal(v){navigator.clipboard?.writeText(v)}
 async function deleteLead(id){
   if(!confirm('确认删除？'))return;
-  try{await api(`/leads?id=eq.${id}`,{method:'DELETE'});allLeads=allLeads.filter(x=>x.id!==id);buildWhoPills();applyFilters();renderTeam();}
-  catch(e){alert('删除失败：'+e.message);}
+  try{
+    await api(`/leads?id=eq.${id}`,{method:'DELETE'});
+    allLeads=allLeads.filter(x=>x.id!==id);
+    buildWhoPills();
+    // 删除后检查当前页是否还有内容，没有则退一页
+    const filtered=getFiltered();
+    const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+    if(currentPage>totalPages) currentPage=totalPages;
+    renderStats(filtered);
+    renderTable(filtered);
+    renderTeam();
+  }catch(e){alert('删除失败：'+e.message);}
 }
 
 function setSyncing(v){document.getElementById('sdot').classList.toggle('spin',v);document.getElementById('stxt').textContent=v?'同步中...':'已同步'}
