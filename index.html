@@ -936,16 +936,22 @@ function renderGoalTab(){
       if(CONV.has(l.status))pChMap[c].conv++;
     });
 
-    // 渠道测算：按该人线索分布比例 × 各渠道全局转化率
+    // 渠道测算：按该人历史「合作数」占比分配目标（高效渠道多分，低效少分）
+    // 若本人无合作数据，回退到线索量占比
+    const totalPersonConv=Object.values(pChMap).reduce((s,v)=>s+v.conv,0);
+    const useConvShare=totalPersonConv>0;
+
     const chForecast=chRows.map(([ch,gd],i)=>{
       const pd=pChMap[ch]||{t:0,conv:0};
-      // 用全局该渠道转化率（数据更稳定），如本人有数据则优先本人
       const rate=pd.t>=3?pd.conv/pd.t:(gd.t>0?gd.conv/gd.t:0);
-      const share=total>0?pd.t/total:0;
+      // 优先按合作数占比，无合作记录时回退线索量占比
+      const share=useConvShare
+        ?(totalPersonConv>0?pd.conv/totalPersonConv:0)
+        :(total>0?pd.t/total:0);
       const goalConv=remaining*share;
       const need=rate>0?Math.ceil(goalConv/rate):null;
       return{ch,t:pd.t,conv:pd.conv,rate,share,goalConv,need,i};
-    }).filter(r=>r.t>0||r.share>0);
+    }).filter(r=>r.t>0||r.conv>0||r.share>0);
 
     return{name,total,conv,target,remaining,chForecast};
   });
@@ -1013,7 +1019,7 @@ function renderGoalTab(){
         ? `<div class="gpc-done">🎉 目标达成，继续保持！</div>`
         : `<div class="gpc-section-label">还需 pitch — 剩余 ${p.remaining} 个合作目标</div>
            <table class="gpc-table">
-             <thead><tr><th>渠道</th><th>占比</th><th>转化率</th><th>需 pitch</th><th>日均</th></tr></thead>
+             <thead><tr><th>渠道</th><th>合作占比</th><th>转化率</th><th>需 pitch</th><th>日均</th></tr></thead>
              <tbody>
                ${forecastRows}
                <tr class="gpc-total-row"><td>合计</td><td>—</td><td>—</td><td><b>${totalNeed}</b></td><td><span class="gpc-daily gpc-daily-total">${totalDaily}</span></td></tr>
@@ -1024,7 +1030,7 @@ function renderGoalTab(){
   }).join('');
 
   const noteHtml=`<div class="gpc-note">
-    📌 <b>测算逻辑</b>：按各人历史线索的渠道分布比例分配剩余目标，再除以该渠道转化率，得出各渠道需新 pitch 的客户数。本人数据 ≥3 条时优先使用本人转化率，否则用全局渠道均值。「日均」= 需 pitch 数 ÷ 本月剩余 ${daysLeft} 个工作日。∞ 表示该渠道暂无转化率数据，需尽快建立样本。
+    📌 <b>测算逻辑</b>：按各人历史<b>已合作数的渠道占比</b>分配剩余目标（高效渠道多分、低效少分），再除以该渠道转化率得出需新 pitch 的客户数。无合作记录时回退到线索量占比。本人数据 ≥3 条时优先用本人转化率，否则用全局渠道均值。「日均」= 需 pitch 数 ÷ 本月剩余 ${daysLeft} 个工作日。∞ 表示该渠道暂无转化率数据，需尽快建立样本。
   </div>`;
 
   el.innerHTML=`<div class="goal-3col" style="margin-top:4px">${personHtml}</div>${noteHtml}`;
