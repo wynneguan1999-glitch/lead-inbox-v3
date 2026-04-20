@@ -588,7 +588,7 @@ function renderStats(filtered){
   document.getElementById('s1').textContent=pend;
   document.getElementById('s1-note').textContent=total?`占 ${Math.round(pend/total*100)}%`:'';
   document.getElementById('s2').textContent=filtered.filter(l=>l.status==='建联中').length;
-  document.getElementById('s3').textContent=filtered.filter(l=>l.status==='合作中').length;
+  document.getElementById('s3').textContent=filtered.filter(l=>l.status==='合作中'||l.status==='非付费').length;
   const weekAgo=Date.now()-7*86400000;
   document.getElementById('s4').textContent=filtered.filter(l=>new Date(l.created_at)>weekAgo).length;
   document.getElementById('s4-note').textContent=fTime==='all'?'近 7 天':'当前时段';
@@ -630,15 +630,15 @@ function syncWhoPills(){document.querySelectorAll('#who-pills .pill').forEach(p=
 // ═══════════════════════════════════════════
 // 表格
 // ═══════════════════════════════════════════
-function chColor(n){return allChannels.find(x=>x.name===n)?.color||'gray'}
-function stColor(n){return allStatuses.find(x=>x.name===n)?.color||'gray'}
-function qlColor(n){return allQualities.find(x=>x.name===n)?.color||'gray'}
-function prColor(n){return allPriorities.find(x=>x.name===n)?.color||'gray'}
+function chColor(n){const x=allChannels.find(x=>x.name===n);return x?x.color:'gray'}
+function stColor(n){const x=allStatuses.find(x=>x.name===n);return x?x.color:'gray'}
+function qlColor(n){const x=allQualities.find(x=>x.name===n);return x?x.color:'gray'}
+function prColor(n){const x=allPriorities.find(x=>x.name===n);return x?x.color:'gray'}
 
 function renderTable(filtered){
   const tbody=document.getElementById('tbody');
   const pgEl=document.getElementById('pagination');
-  if(!filtered?.length){tbody.innerHTML='<div class="empty">暂无线索</div>';pgEl.classList.add('hidden');return;}
+  if(!filtered||!filtered.length){tbody.innerHTML='<div class="empty">暂无线索</div>';pgEl.classList.add('hidden');return;}
   const totalPages=Math.ceil(filtered.length/PAGE_SIZE);
   if(currentPage>totalPages)currentPage=totalPages;
   const rows=filtered.slice((currentPage-1)*PAGE_SIZE,currentPage*PAGE_SIZE);
@@ -694,7 +694,7 @@ function renderPagination(total,totalPages){
   h+=`<button class="page-btn" ${currentPage===totalPages?'disabled':''} onclick="goPage(${currentPage+1})">下页 ›</button>`;
   btnsEl.innerHTML=h;
 }
-function goPage(p){const f=getFiltered(),tp=Math.max(1,Math.ceil(f.length/PAGE_SIZE));if(p<1||p>tp)return;currentPage=p;renderTable(f);document.querySelector('.table-wrap')?.scrollIntoView({behavior:'smooth',block:'start'});}
+function goPage(p){const f=getFiltered(),tp=Math.max(1,Math.ceil(f.length/PAGE_SIZE));if(p<1||p>tp)return;currentPage=p;renderTable(f);const tw=document.querySelector('.table-wrap');if(tw)tw.scrollIntoView({behavior:'smooth',block:'start'});}
 function jumpToPage(){const v=parseInt(document.getElementById('jump-input').value);if(!isNaN(v))goPage(v);}
 
 // ═══════════════════════════════════════════
@@ -751,7 +751,7 @@ function selectMember(name,el){
   transferSelectedMember=name;
   document.querySelectorAll('.member-opt').forEach(x=>x.classList.remove('selected'));el.classList.add('selected');
   const lead=allLeads.find(l=>l.id===transferLeadId);
-  document.getElementById('btn-confirm-transfer').disabled=name===(lead?.added_by||'未知');
+  document.getElementById('btn-confirm-transfer').disabled=name===((lead&&lead.added_by)||'未知');
 }
 async function confirmTransfer(){
   if(!transferLeadId||!transferSelectedMember)return;
@@ -823,14 +823,15 @@ function acFunnel(){
     const fromHere=new Set(statusOrder.slice(i));
     const n=allLeads.filter(l=>fromHere.has(l.status)).length;
     const st=allStatuses.find(s=>s.name===name);
-    const[bg,fg]=COLORS[st?.color||'gray']||COLORS.gray;
+    const[bg,fg]=COLORS[(st&&st.color)||'gray']||COLORS.gray;
     return{name,n,bg,fg};
   }).filter((s,i)=>s.n>0||i<3);
-  const maxN=steps[0]?.n||1;
+  const maxN=(steps[0]&&steps[0].n)||1;
   let html='<div class="funnel-wrap">';
   steps.forEach((s,i)=>{
     const w=Math.max(14,Math.round(s.n/maxN*100));
-    const rate=i===0?'100%':fmtPct(s.n,steps[i-1]?.n||1);
+    const prev=steps[i-1];
+    const rate=i===0?'100%':fmtPct(s.n,(prev&&prev.n)||1);
     html+=`<div class="funnel-step"><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:${w}%;background:${s.bg}"><span class="funnel-label" style="color:${s.fg}">${esc(s.name)}</span></div></div><div class="funnel-meta"><span class="funnel-count">${s.n}</span><span class="funnel-rate">${i===0?'基数':'↓ '+rate}</span></div></div>`;
     if(i<steps.length-1)html+=`<div class="funnel-arrow">↓</div>`;
   });
@@ -863,7 +864,7 @@ function acPriority(){
 }
 
 function acEfficiency(){
-  const CONV=new Set(['合作中','已完成']),CONT=new Set(['建联中','合作中','已完成']);
+  const CONV=new Set(['合作中','已完成','非付费']),CONT=new Set(['建联中','合作中','已完成','非付费']);
   const chMap={};
   allLeads.forEach(l=>{const c=l.channel||'其他';if(!chMap[c])chMap[c]={t:0,a:0,cnt:0,conv:0};chMap[c].t++;if(l.quality==='A 类'||l.quality==='A类')chMap[c].a++;if(CONT.has(l.status))chMap[c].cnt++;if(CONV.has(l.status))chMap[c].conv++;});
   const rows=Object.entries(chMap).sort((a,b)=>b[1].t-a[1].t);
@@ -876,7 +877,7 @@ function acEfficiency(){
 
 function acIssues(){
   const total=allLeads.length;if(!total){document.getElementById('ac-issues').innerHTML='<div style="color:#ccc;font-size:13px">暂无数据</div>';return;}
-  const CONV=new Set(['合作中','已完成']);
+  const CONV=new Set(['合作中','已完成','非付费']);
   const issues=[];
   const conv=allLeads.filter(l=>CONV.has(l.status)).length,convR=pct(conv,total);
   if(convR>=20)issues.push({t:'good',i:'✓',text:`整体合作转化率 <b>${convR}%</b>，表现良好`});
@@ -902,7 +903,7 @@ function renderGoalTab(){
   const el=document.getElementById('goal-body');
   if(!allLeads.length){el.innerHTML='<div class="empty">暂无数据，请先录入线索</div>';return;}
 
-  const CONV=new Set(['合作中','已完成']);
+  const CONV=new Set(['合作中','已完成','非付费']);
   const EXCLUDED_MEMBERS=new Set(['ada','Ada','ADA']);
   const names=[...new Set(allLeads.map(l=>l.added_by||'未知').filter(Boolean))]
     .filter(n=>!EXCLUDED_MEMBERS.has(n))
@@ -1037,7 +1038,8 @@ function renderGoalTab(){
 }
 
 function updatePersonGoal(name){
-  const v=parseInt(document.getElementById(`goal-input-${name}`)?.value);
+  const el=document.getElementById('goal-input-'+name);
+  const v=parseInt(el&&el.value);
   if(!isNaN(v)&&v>0){
     personGoals[name]=v;
     localStorage.setItem('liPersonGoals',JSON.stringify(personGoals));
@@ -1046,7 +1048,8 @@ function updatePersonGoal(name){
 }
 
 function updateGoal(){
-  const v=parseInt(document.getElementById('goal-input-val')?.value);
+  const elv=document.getElementById('goal-input-val');
+  const v=parseInt(elv&&elv.value);
   if(!isNaN(v)&&v>0){goalTarget=v;localStorage.setItem('liGoal',v);renderGoalTab();}
 }
 
@@ -1092,7 +1095,7 @@ function closeDrawer(){document.getElementById('drawer').classList.remove('open'
 // ═══════════════════════════════════════════
 // 工具
 // ═══════════════════════════════════════════
-function copyVal(v){navigator.clipboard?.writeText(v)}
+function copyVal(v){if(navigator.clipboard)navigator.clipboard.writeText(v)}
 
 async function deleteLead(id){
   if(!confirm('确认删除？'))return;
