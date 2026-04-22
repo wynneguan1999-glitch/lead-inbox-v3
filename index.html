@@ -41,7 +41,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .btn-confirm:hover{opacity:.85}
 .btn-confirm:disabled{opacity:.4;cursor:default}
 
-/* ─── 导航 ─── */
+/* ─── 编辑弹窗 ─── */
+.edit-modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:3000;padding:16px}
+.edit-modal.hidden{display:none}
+.edit-card{background:#fff;border-radius:16px;padding:28px;width:500px;max-width:100%;max-height:90vh;overflow-y:auto}
+.edit-card h3{font-size:15px;font-weight:600;margin-bottom:4px}
+.edit-card .edit-sub{font-size:12px;color:#aaa;margin-bottom:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.edit-fields{display:flex;flex-direction:column;gap:13px}
+.edit-field{display:flex;flex-direction:column;gap:4px}
+.edit-field label{font-size:11px;color:#888;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.edit-field input,.edit-field textarea{padding:8px 11px;border:1px solid #e4e4e4;border-radius:8px;font-size:13px;font-family:inherit;color:#1a1a1a;outline:none;background:#fafafa;width:100%}
+.edit-field input:focus,.edit-field textarea:focus{border-color:#aaa;background:#fff}
+.edit-field textarea{resize:vertical;min-height:72px;line-height:1.5}
+.edit-actions{display:flex;gap:8px;margin-top:22px}
+
+
 .nav{background:#fff;border-bottom:1px solid #eee;padding:0 28px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
 .nav-logo{display:flex;align-items:center;gap:8px}
 .nav-dot{width:9px;height:9px;border-radius:50%;background:#FAC775}
@@ -90,7 +104,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 
 /* ─── 表格（7 列 + priority）─── */
 .table-wrap{background:#fff;border-radius:13px;border:1px solid #eee;overflow:visible}
-.t-head,.t-row{display:grid;grid-template-columns:minmax(0,2fr) 82px 95px 82px 88px 100px 110px 78px;gap:7px;padding:10px 15px;align-items:center}
+.t-head,.t-row{display:grid;grid-template-columns:minmax(0,1.4fr) 82px 95px 82px 88px 100px 110px 68px;gap:7px;padding:9px 15px;align-items:center}
 .t-head{font-size:11px;color:#bbb;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #f2f2f2;border-radius:13px 13px 0 0;background:#fff}
 .t-row{border-bottom:1px solid #fafafa;transition:background .1s;position:relative}
 .t-row:last-child{border-bottom:none}
@@ -128,10 +142,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .who-name{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .who-icon{font-size:10px;color:#ccc;flex-shrink:0}
 
-.row-btns{display:flex;gap:4px}
-.row-btn{padding:3px 8px;font-size:11px;border:1px solid #e8e8e8;border-radius:5px;cursor:pointer;background:transparent;color:#888;font-family:inherit}
-.row-btn:hover{border-color:#bbb;color:#333}
+.row-btns{display:flex;gap:3px;align-items:center}
+.row-btn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:1px solid #ebebeb;border-radius:6px;cursor:pointer;background:transparent;color:#bbb;font-family:inherit;padding:0;transition:all .12s;flex-shrink:0}
+.row-btn:hover{border-color:#ccc;color:#555;background:#f7f7f7}
 .row-btn.del:hover{border-color:#D85A30;color:#D85A30;background:#FAECE7}
+.row-btn svg{width:13px;height:13px;flex-shrink:0}
 .lead-time{font-size:11px;color:#bbb;white-space:nowrap}
 .empty{padding:56px 20px;text-align:center;color:#ccc;font-size:14px}
 
@@ -349,7 +364,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
   </div>
 </div>
 
-<!-- 导航 -->
+<!-- 编辑弹窗 -->
+<div class="edit-modal hidden" id="edit-modal">
+  <div class="edit-card">
+    <h3>编辑线索信息</h3>
+    <div class="edit-sub" id="edit-sub"></div>
+    <div class="edit-fields">
+      <div class="edit-field"><label>线索内容 / 链接</label><input id="ef-value" type="text" placeholder="线索内容或 URL"/></div>
+      <div class="edit-field"><label>联系人姓名</label><input id="ef-contact-name" type="text" placeholder="姓名"/></div>
+      <div class="edit-field"><label>手机号</label><input id="ef-phone" type="text" placeholder="手机号"/></div>
+      <div class="edit-field"><label>邮箱</label><input id="ef-email" type="text" placeholder="邮箱地址"/></div>
+      <div class="edit-field"><label>微信</label><input id="ef-wechat" type="text" placeholder="微信号"/></div>
+      <div class="edit-field"><label>备注</label><textarea id="ef-note" placeholder="备注信息"></textarea></div>
+    </div>
+    <div class="edit-actions">
+      <button class="btn-cancel" onclick="closeEdit()">取消</button>
+      <button class="btn-confirm" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+
 <nav class="nav">
   <div class="nav-logo">
     <div class="nav-dot"></div>
@@ -672,8 +707,9 @@ function renderTable(filtered){
       </div>
       <div class="lead-time">${fmtDate(l.created_at)}</div>
       <div class="row-btns">
-        <button class="row-btn" onclick="copyVal('${esc(l.value)}')">复制</button>
-        <button class="row-btn del" onclick="deleteLead('${l.id}')">删除</button>
+        <button class="row-btn" onclick="openEdit('${l.id}')" title="编辑"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5l2 2-7 7H4.5v-2l7-7z"/><path d="M10 4l2 2"/></svg></button>
+        <button class="row-btn" onclick="copyVal('${esc(l.value)}')" title="复制"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 014.5 2H11"/></svg></button>
+        <button class="row-btn del" onclick="deleteLead('${l.id}')" title="删除"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h10M6 5V3.5h4V5M6.5 8v4M9.5 8v4"/><rect x="4" y="5" width="8" height="8" rx="1"/></svg></button>
       </div>
     </div>`;
   }).join('');
@@ -727,6 +763,58 @@ async function updateLeadField(id,field,value){
   try{await api(`/leads?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({[field]:value})});const l=allLeads.find(x=>x.id===id);if(l)l[field]=value;applyFilters(false);renderTeam();renderAnalyticsTab();renderGoalTab();}
   catch(e){alert('更新失败：'+e.message);}finally{setSyncing(false);}
 }
+
+// ═══════════════════════════════════════════
+// 编辑弹窗
+// ═══════════════════════════════════════════
+let editLeadId=null;
+
+function openEdit(leadId){
+  const l=allLeads.find(x=>x.id===leadId);
+  if(!l)return;
+  editLeadId=leadId;
+  document.getElementById('edit-sub').textContent=(l.value||'').slice(0,60);
+  document.getElementById('ef-value').value=l.value||'';
+  document.getElementById('ef-contact-name').value=l.contact_name||'';
+  document.getElementById('ef-phone').value=l.phone||'';
+  document.getElementById('ef-email').value=l.email_contact||'';
+  document.getElementById('ef-wechat').value=l.wechat||'';
+  document.getElementById('ef-note').value=l.note||'';
+  document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+function closeEdit(){
+  document.getElementById('edit-modal').classList.add('hidden');
+  editLeadId=null;
+}
+
+async function saveEdit(){
+  if(!editLeadId)return;
+  const patch={
+    value:document.getElementById('ef-value').value.trim()||undefined,
+    contact_name:document.getElementById('ef-contact-name').value.trim()||null,
+    phone:document.getElementById('ef-phone').value.trim()||null,
+    email_contact:document.getElementById('ef-email').value.trim()||null,
+    wechat:document.getElementById('ef-wechat').value.trim()||null,
+    note:document.getElementById('ef-note').value.trim()||null,
+  };
+  // remove undefined keys
+  Object.keys(patch).forEach(k=>patch[k]===undefined&&delete patch[k]);
+  setSyncing(true);
+  try{
+    await api(`/leads?id=eq.${editLeadId}`,{method:'PATCH',body:JSON.stringify(patch)});
+    const l=allLeads.find(x=>x.id===editLeadId);
+    if(l)Object.assign(l,patch);
+    closeEdit();
+    applyFilters(false);
+  }catch(e){alert('保存失败：'+e.message);}
+  finally{setSyncing(false);}
+}
+
+// 点遮罩关闭编辑弹窗
+document.addEventListener('click',e=>{
+  if(e.target===document.getElementById('edit-modal'))closeEdit();
+});
 
 // ═══════════════════════════════════════════
 // 转让
