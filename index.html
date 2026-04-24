@@ -519,7 +519,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 // ═══════════════════════════════════════════
 let C={url:'',key:''};
 let allLeads=[], allChannels=[], allStatuses=[], allQualities=[], allPriorities=[];
-let fCh='all', fSt='all', fQl='all', fPr='all', fTime='all', fWho='all';
+let fCh='all', fSt='all', fQl=new Set(), fPr=new Set(), fTime='all', fWho='all';
 let newColors={channel:'pink',status:'blue',quality:'teal',priority:'coral'};
 let openDropId=null, openDropType=null;
 let transferLeadId=null, transferSelectedMember=null;
@@ -571,7 +571,7 @@ async function loadAll(){
     if(spg)try{personGoals=JSON.parse(spg);}catch(e){}
     buildWhoPills();
     renderFilterPills();
-    applyFilters();
+    applyFilters(false);  // 自动刷新不重置页码
     renderTeam();
     renderDrawer();
     renderAnalyticsTab();
@@ -598,8 +598,14 @@ function getFiltered(){
   return allLeads.filter(l=>{
     if(fCh!=='all'&&l.channel!==fCh)return false;
     if(fSt!=='all'&&l.status!==fSt)return false;
-    if(fQl!=='all'){if(fQl==='__none__'&&l.quality)return false;if(fQl!=='__none__'&&l.quality!==fQl)return false;}
-    if(fPr!=='all'){if(fPr==='__none__'&&l.priority)return false;if(fPr!=='__none__'&&l.priority!==fPr)return false;}
+    if(fQl.size>0){
+      const val=l.quality||'__none__';
+      if(!fQl.has(val))return false;
+    }
+    if(fPr.size>0){
+      const val=l.priority||'__none__';
+      if(!fPr.has(val))return false;
+    }
     if(fWho!=='all'&&(l.added_by||'未知')!==fWho)return false;
     if(since&&new Date(l.created_at).getTime()<since)return false;
     if(!q)return true;
@@ -633,23 +639,39 @@ function renderStats(filtered){
 // Pills
 // ═══════════════════════════════════════════
 function renderFilterPills(){
-  function pills(arr,cur,fn,elId,noneLabel){
+  // 单选 pills（渠道、状态）
+  function pillsSingle(arr,cur,fn,elId){
     let h=`<button class="pill${cur==='all'?' on':''}" onclick="${fn}('all')">全部</button>`;
     arr.forEach(x=>{h+=`<button class="pill${cur===x.name?' on':''}" onclick="${fn}('${esc(x.name)}')">${esc(x.name)}</button>`;});
-    if(noneLabel) h+=`<button class="pill${cur==='__none__'?' on':''}" onclick="${fn}('__none__')">${noneLabel}</button>`;
     document.getElementById(elId).innerHTML=h;
   }
-  pills(allChannels,fCh,"setFCh",'ch-pills',null);
-  pills(allStatuses,fSt,"setFSt",'st-pills',null);
-  pills(allQualities,fQl,"setFQl",'ql-pills','未标记');
-  pills(allPriorities,fPr,"setFPr",'pr-pills','未标记');
+  // 多选 pills（质量、价值）
+  function pillsMulti(arr,curSet,fn,elId,noneLabel){
+    const allOff=curSet.size===0;
+    let h=`<button class="pill${allOff?' on':''}" onclick="${fn}('__all__')">全部</button>`;
+    arr.forEach(x=>{h+=`<button class="pill${curSet.has(x.name)?' on':''}" onclick="${fn}('${esc(x.name)}')">${esc(x.name)}</button>`;});
+    if(noneLabel)h+=`<button class="pill${curSet.has('__none__')?' on':''}" onclick="${fn}('__none__')">${noneLabel}</button>`;
+    document.getElementById(elId).innerHTML=h;
+  }
+  pillsSingle(allChannels,fCh,"setFCh",'ch-pills');
+  pillsSingle(allStatuses,fSt,"setFSt",'st-pills');
+  pillsMulti(allQualities,fQl,"setFQl",'ql-pills','未标记');
+  pillsMulti(allPriorities,fPr,"setFPr",'pr-pills','未标记');
   document.querySelectorAll('#time-pills .pill').forEach(p=>p.classList.toggle('on',p.dataset.time===fTime));
   syncWhoPills();
 }
 function setFCh(v){fCh=v;renderFilterPills();applyFilters();}
 function setFSt(v){fSt=v;renderFilterPills();applyFilters();}
-function setFQl(v){fQl=v;renderFilterPills();applyFilters();}
-function setFPr(v){fPr=v;renderFilterPills();applyFilters();}
+function setFQl(v){
+  if(v==='__all__'){fQl=new Set();}
+  else{if(fQl.has(v))fQl.delete(v);else fQl.add(v);}
+  renderFilterPills();applyFilters();
+}
+function setFPr(v){
+  if(v==='__all__'){fPr=new Set();}
+  else{if(fPr.has(v))fPr.delete(v);else fPr.add(v);}
+  renderFilterPills();applyFilters();
+}
 
 function buildWhoPills(){
   const names=new Set(allLeads.map(l=>l.added_by||'未知').filter(Boolean));
