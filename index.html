@@ -531,7 +531,7 @@ let newColors={channel:'pink',status:'blue',quality:'teal',priority:'coral'};
 let openDropId=null, openDropType=null;
 let transferLeadId=null, transferSelectedMember=null;
 let goalTarget=30;
-let personGoals={}; // {name: targetNum}
+let personGoals={}; // {monthKey: {name: targetNum}}
 let goalMonth=''; // 'YYYY-M' or '' = all-time
 
 function renderGoalMonthPills(){
@@ -1042,7 +1042,7 @@ function renderGoalTab(){
 
   const CONV=new Set(['合作中','已完成','非付费']);
   const EXCLUDED_MEMBERS=new Set(['ada','Ada','ADA']);
-  const names=[...new Set(allLeads.map(l=>l.added_by||'未知').filter(Boolean))]
+  const names=[...new Set(allLeads.map(l=>(l.added_by||'').trim()).filter(Boolean))]
     .filter(n=>!EXCLUDED_MEMBERS.has(n))
     .sort();
 
@@ -1077,14 +1077,15 @@ function renderGoalTab(){
   const chRows=Object.entries(chMap).sort((a,b)=>b[1].t-a[1].t);
 
   // 每人数据（当月）
+  const monthGoals=personGoals[goalMonth]||{};
   const personData=names.map(name=>{
-    const leads=monthLeads.filter(l=>(l.added_by||'未知')===name);
+    const leads=monthLeads.filter(l=>(l.added_by||'').trim()===name);
     const total=leads.length;
     const conv=leads.filter(l=>CONV.has(l.status)).length;
-    const target=personGoals[name]!==undefined?personGoals[name]:10;
+    const target=monthGoals[name]!==undefined?monthGoals[name]:10;
     const remaining=Math.max(0,target-conv);
 
-    // 该人各渠道分布
+    // 该人各渠道分布（当月，用于占比分配）
     const pChMap={};
     leads.forEach(l=>{
       const c=l.channel||'其他';
@@ -1093,20 +1094,30 @@ function renderGoalTab(){
       if(CONV.has(l.status))pChMap[c].conv++;
     });
 
-    // 渠道测算：按该人历史「合作数」占比分配目标（高效渠道多分，低效少分）
-    // 若本人无合作数据，回退到线索量占比
+    // 该人各渠道全量历史（用于个人转化率，比当月更稳定）
+    const pGlobalMap={};
+    allLeads.filter(l=>(l.added_by||'').trim()===name).forEach(l=>{
+      const c=l.channel||'其他';
+      if(!pGlobalMap[c])pGlobalMap[c]={t:0,conv:0};
+      pGlobalMap[c].t++;
+      if(CONV.has(l.status))pGlobalMap[c].conv++;
+    });
+
+    // 渠道测算：合作占比 & 线索量占比各50%混合，避免样本少时失真
     const totalPersonConv=Object.values(pChMap).reduce((s,v)=>s+v.conv,0);
-    const useConvShare=totalPersonConv>0;
+    const totalPersonLeads=Object.values(pChMap).reduce((s,v)=>s+v.t,0);
 
     const chForecast=chRows.map(([ch,gd],i)=>{
       const pd=pChMap[ch]||{t:0,conv:0};
-      // 转化率：始终用全量历史渠道均值，不受月份影响
+      // 转化率：个人全量历史该渠道转化率，无个人数据时才用全局均值兜底
+      const pgd=pGlobalMap[ch]||{t:0,conv:0};
       const gGlobal=globalChMap[ch]||{t:0,conv:0};
-      const rate=gGlobal.t>0?gGlobal.conv/gGlobal.t:0;
-      // 优先按合作数占比，无合作记录时回退线索量占比
-      const share=useConvShare
-        ?(totalPersonConv>0?pd.conv/totalPersonConv:0)
-        :(total>0?pd.t/total:0);
+      const rate=pgd.t>0?pgd.conv/pgd.t:(gGlobal.t>0?gGlobal.conv/gGlobal.t:0);
+      // 占比：根据合作样本量动态调整权重，样本少时以线索量占比为主
+      const convWeight=totalPersonConv===0?0:totalPersonConv<=3?0.2:0.5;
+      const convShare=totalPersonConv>0?pd.conv/totalPersonConv:0;
+      const leadShare=totalPersonLeads>0?pd.t/totalPersonLeads:0;
+      const share=convShare*convWeight+leadShare*(1-convWeight);
       const goalConv=remaining*share;
       const need=rate>0?Math.ceil(goalConv/rate):null;
       return{ch,t:pd.t,conv:pd.conv,rate,share,goalConv,need,i};
@@ -1198,7 +1209,7 @@ function renderGoalTab(){
   }).join('');
 
   const noteHtml=isCurrentMonth?`<div class="gpc-note">
-    📌 <b>测算逻辑</b>：按各人当月已合作数的渠道占比分配剩余目标（高效渠道多分、低效少分），再除以该渠道<b>全量历史转化率</b>得出需新 pitch 的客户数。无合作记录时回退到线索量占比。「日均」= 需 pitch 数 ÷ 本月剩余 ${daysLeft} 个工作日。∞ 表示该渠道暂无历史数据，需尽快建立样本。
+    📌 <b>测算逻辑</b>：渠道占比按合作样本量动态加权——合作数为0时100%用线索量占比；1–3个时合作占比20%+线索量80%；4个以上时各50%。转化率用<b>个人全量历史该渠道转化率</b>，该渠道无个人数据时用全局均值兜底。「日均」= 需 pitch 数 ÷ 本月剩余 ${daysLeft} 个工作日。∞ 表示该渠道暂无数据。
   </div>`:'';
 
   el.innerHTML=`<div class="goal-3col" style="margin-top:4px">${personHtml}</div>${noteHtml}`;
@@ -1208,7 +1219,8 @@ function updatePersonGoal(name){
   const el=document.getElementById('goal-input-'+name);
   const v=parseInt(el&&el.value);
   if(!isNaN(v)&&v>0){
-    personGoals[name]=v;
+    if(!personGoals[goalMonth])personGoals[goalMonth]={};
+    personGoals[goalMonth][name]=v;
     localStorage.setItem('liPersonGoals',JSON.stringify(personGoals));
     renderGoalTab();
   }
