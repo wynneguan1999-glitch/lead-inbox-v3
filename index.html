@@ -1120,7 +1120,7 @@ function renderGoalTab(){
       const share=convShare*convWeight+leadShare*(1-convWeight);
       const goalConv=remaining*share;
       const need=rate>0?Math.ceil(goalConv/rate):null;
-      return{ch,t:pd.t,conv:pd.conv,rate,share,goalConv,need,i};
+      return{ch,t:pd.t,conv:pd.conv,rate,share,leadShare,goalConv,need,i};
     }).filter(r=>r.t>0||r.conv>0||r.share>0);
 
     return{name,total,conv,target,remaining,chForecast};
@@ -1156,7 +1156,7 @@ function renderGoalTab(){
       const dailyNeed=r.need!=null?(r.need/daysLeft).toFixed(1):'∞';
       return`<tr>
         <td><span class="ch-dot" style="background:${fg}"></span>${esc(r.ch)}</td>
-        <td>${Math.round(r.share*100)}%</td>
+        <td>${Math.round(r.leadShare*100)}%</td>
         <td>${Math.round(r.rate*100)}%</td>
         <td><b style="color:#1a1a1a">${r.need!=null?r.need:'∞'}</b></td>
         <td><span class="gpc-daily${dailyNeed==='∞'?' gpc-daily-inf':''}">${dailyNeed}</span></td>
@@ -1197,7 +1197,7 @@ function renderGoalTab(){
         : isCurrentMonth
           ? `<div class="gpc-section-label">还需 pitch — 剩余 ${p.remaining} 个合作目标</div>
              <table class="gpc-table">
-               <thead><tr><th>渠道</th><th>合作占比</th><th>转化率</th><th>需 pitch</th><th>日均</th></tr></thead>
+               <thead><tr><th>渠道</th><th>线索占比</th><th>转化率</th><th>需 pitch</th><th>日均</th></tr></thead>
                <tbody>
                  ${forecastRows}
                  <tr class="gpc-total-row"><td>合计</td><td>—</td><td>—</td><td><b>${totalNeed}</b></td><td><span class="gpc-daily gpc-daily-total">${totalDaily}</span></td></tr>
