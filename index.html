@@ -248,6 +248,34 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .issue-text{flex:1;color:#333}
 .issue-text b{font-weight:600}
 
+/* ═══ 唤醒工作单 CSS ══════════════════════════════ */
+#wake-body{overflow-x:auto;overflow-y:auto}
+.wake-columns{display:flex;gap:14px;align-items:flex-start;min-width:0}
+.wake-group{flex:1;min-width:200px;max-width:340px}
+.wake-group-title{font-size:11px;font-weight:500;color:#aaa;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #f2f2f2;display:flex;align-items:center;gap:8px}
+.wake-group-badge{font-size:10px;background:#f0f0ee;color:#888;padding:2px 8px;border-radius:10px;font-family:monospace}
+.wake-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border:1px solid #eee;border-radius:10px;margin-bottom:8px;transition:border-color .12s}
+.wake-item:hover{border-color:#ddd}
+.wake-item.done{background:#fafaf8;opacity:.72}
+.wake-check{width:18px;height:18px;border:1.5px solid #ddd;border-radius:5px;flex-shrink:0;margin-top:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.wake-check:hover{border-color:#aaa}
+.wake-check.checked{background:#1a1a1a;border-color:#1a1a1a}
+.wake-check.checked::after{content:'✓';font-size:11px;color:#fff;font-weight:700}
+.wake-info{flex:1;min-width:0}
+.wake-name{font-size:13px;font-weight:500;color:#1a1a1a;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wake-item.done .wake-name{text-decoration:line-through;color:#bbb}
+.wake-meta{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.wake-tag{font-size:10px;font-family:monospace;color:#aaa;padding:1px 6px;border:1px solid #eee;border-radius:3px;background:#fafafa}
+.wake-contact{font-size:11px;color:#bbb;font-family:monospace}
+.wake-note-display{margin-top:6px;font-size:12px;color:#888;line-height:1.5;font-style:italic;padding:5px 8px;background:#fafaf8;border-radius:5px;border-left:2px solid #e8e8e8;cursor:pointer}
+.wake-save-btn{padding:4px 12px;font-size:11px;border:1px solid #ddd;border-radius:5px;background:#fff;color:#555;cursor:pointer;font-family:inherit;transition:all .12s;margin-top:6px}
+.wake-save-btn:hover{border-color:#aaa;color:#1a1a1a}
+.wake-link{color:#1a1a1a;text-decoration:underline;text-underline-offset:2px;text-decoration-color:#ddd}
+.wake-link:hover{text-decoration-color:#aaa}
+.wake-item.done .wake-link{color:#bbb}
+.wake-empty{text-align:center;padding:40px 20px;color:#ccc;font-size:13px}
+.wake-empty-icon{font-size:32px;margin-bottom:10px}
+
 .goal-month-pills{display:flex;gap:5px;flex-wrap:wrap}
 .goal-month-pill{padding:3px 11px;border-radius:20px;font-size:12px;border:1px solid #e4e4e4;background:#fff;color:#888;cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap}
 .goal-month-pill:hover{border-color:#bbb;color:#333}
@@ -407,6 +435,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
   <button class="tab-btn on" data-tab="tab-leads">线索管理</button>
   <button class="tab-btn" data-tab="tab-goal">目标测算</button>
   <button class="tab-btn" data-tab="tab-analytics">数据分析</button>
+  <button class="tab-btn" id="wake-tab-btn" data-tab="tab-wake">唤醒工作单<span id="wake-badge" style="display:none;margin-left:5px;background:#D85A30;color:#fff;font-size:9px;font-family:monospace;padding:1px 6px;border-radius:8px;vertical-align:middle;line-height:1.5"></span></button>
 </div>
 
 <div class="wrap">
@@ -482,6 +511,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
     <div class="goal-month-pills" id="goal-month-pills"></div>
   </div>
   <div id="goal-body" style="padding-top:4px">
+    <div class="empty">正在加载...</div>
+  </div>
+</div><!-- ══════════════════════ TAB 4：唤醒工作单 ══════════════════════ -->
+<div class="tab-content" id="tab-wake">
+  <div style="display:flex;align-items:center;gap:10px;padding:12px 0 8px;flex-wrap:wrap">
+    <span style="font-size:12px;color:#aaa;font-weight:500">查看月份</span>
+    <div class="goal-month-pills" id="wake-month-pills"></div>
+    <span id="wake-summary" style="font-size:12px;color:#bbb;margin-left:4px"></span>
+  </div>
+  <div id="wake-body">
     <div class="empty">正在加载...</div>
   </div>
 </div>
@@ -603,6 +642,9 @@ async function loadAll(){
     renderAnalyticsTab();
     renderGoalMonthPills();
     renderGoalTab();
+    loadWakeData();
+    renderWakeMonthPills();
+    renderWakeTab();
   }catch(e){
     document.getElementById('tbody').innerHTML=`<div class="empty">加载失败：${esc(e.message)}</div>`;
   }finally{setSyncing(false)}
@@ -1226,6 +1268,130 @@ function updatePersonGoal(name){
   }
 }
 
+// ═══════════════════════════════════════════
+// 唤醒工作单
+// ═══════════════════════════════════════════
+let wakeMonth='';
+// wakeData: { monthKey: { leadId: { done:bool, note:string } } }
+let wakeData={};
+
+function loadWakeData(){
+  const s=localStorage.getItem('liWakeData');
+  if(s)try{wakeData=JSON.parse(s);}catch(e){}
+}
+function saveWakeData(){localStorage.setItem('liWakeData',JSON.stringify(wakeData));}
+
+function getWakeLeads(){
+  // 唤醒条件：状态为「建联中」，且录入时间距今超过一个完整自然月
+  const now=new Date();
+  const thisMonthStart=new Date(now.getFullYear(),now.getMonth(),1);
+  return allLeads.filter(l=>{
+    if(l.status!=='建联中')return false;
+    const created=new Date(l.created_at);
+    // 必须在当月开始之前录入（即至少经历过一个完整月）
+    return created<thisMonthStart;
+  });
+}
+
+function renderWakeMonthPills(){
+  const now=new Date();
+  const start=new Date(2026,3,1);
+  const options=[];
+  for(let d=new Date(now.getFullYear(),now.getMonth(),1);d>=start;d.setMonth(d.getMonth()-1)){
+    const key=`${d.getFullYear()}-${d.getMonth()+1}`;
+    const isCurrent=d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();
+    const label=isCurrent?`本月（${d.getMonth()+1}月）`:`${d.getFullYear()}/${d.getMonth()+1}`;
+    options.push({key,label});
+  }
+  if(!wakeMonth)wakeMonth=options[0].key;
+  const el=document.getElementById('wake-month-pills');
+  if(!el)return;
+  el.innerHTML=options.map(o=>`<button class="goal-month-pill${wakeMonth===o.key?' on':''}" onclick="setWakeMonth('${o.key}')">${o.label}</button>`).join('');
+}
+
+function setWakeMonth(key){wakeMonth=key;renderWakeMonthPills();renderWakeTab();}
+
+function renderWakeTab(){
+  renderWakeMonthPills();
+  const el=document.getElementById('wake-body');
+  if(!el)return;
+
+  const wakeLeads=getWakeLeads();
+  const monthWake=wakeData[wakeMonth]||{};
+  const doneCount=wakeLeads.filter(l=>monthWake[l.id]?.done).length;
+  const pending=wakeLeads.length-doneCount;
+
+  // 更新 Tab 角标
+  const badge=document.getElementById('wake-badge');
+  if(badge){if(pending>0){badge.style.display='inline';badge.textContent=pending;}else badge.style.display='none';}
+
+  if(!wakeLeads.length){
+    document.getElementById('wake-summary').textContent='';
+    el.innerHTML=`<div class="wake-empty"><div class="wake-empty-icon">✨</div>暂无需要唤醒的客户<br><span style="font-size:11px">建联中且已超过一个自然月的客户会出现在这里</span></div>`;
+    return;
+  }
+
+  document.getElementById('wake-summary').textContent=`${doneCount}/${wakeLeads.length} 已完成`;
+
+  // 按负责人分组
+  const groups={};
+  wakeLeads.forEach(l=>{
+    const who=(l.added_by||'').trim()||'未知';
+    if(!groups[who])groups[who]=[];
+    groups[who].push(l);
+  });
+
+  const cols=Object.entries(groups).sort((a,b)=>a[0].localeCompare(b[0])).map(([who,leads])=>{
+    const groupDone=leads.filter(l=>monthWake[l.id]?.done).length;
+    const items=leads.map(l=>{
+      const state=monthWake[l.id]||{done:false};
+      const isDone=state.done;
+      const contact=[l.contact_name,l.phone||l.wechat||l.email_contact].filter(Boolean).join(' · ');
+      const months=monthsSince(l.created_at);
+      const sinceLabel=months===0?'不足1个月':`已建联 ${months} 个月`;
+
+      const nameVal=l.value||'—';
+      const isUrl=/^https?:\/\//i.test(nameVal);
+      const nameHtml=isUrl
+        ?`<a href="${esc(nameVal)}" target="_blank" rel="noopener" class="wake-link">${esc(nameVal)}</a>`
+        :esc(nameVal);
+
+      return`<div class="wake-item${isDone?' done':''}" id="wake-item-${l.id}">
+        <div class="wake-check${isDone?' checked':''}" onclick="wakeToggle('${l.id}',${!isDone})"></div>
+        <div class="wake-info">
+          <div class="wake-name">${nameHtml}</div>
+          <div class="wake-meta">
+            ${l.channel?`<span class="wake-tag">${esc(l.channel)}</span>`:''}
+            ${l.quality?`<span class="wake-tag">${esc(l.quality)}</span>`:''}
+            ${contact?`<span class="wake-contact">${esc(contact)}</span>`:''}
+          </div>
+        </div>
+        <div class="wake-since">${sinceLabel}</div>
+      </div>`;
+    }).join('');
+
+    return`<div class="wake-group">
+      <div class="wake-group-title">${esc(who)}<span class="wake-group-badge">${groupDone}/${leads.length}</span></div>
+      ${items}
+    </div>`;
+  });
+  el.innerHTML=`<div class="wake-columns">${cols.join('')}</div>`;
+}
+
+function monthsSince(ts){
+  const now=new Date(),d=new Date(ts);
+  return(now.getFullYear()-d.getFullYear())*12+(now.getMonth()-d.getMonth());
+}
+
+function wakeToggle(leadId,done){
+  if(!wakeData[wakeMonth])wakeData[wakeMonth]={};
+  wakeData[wakeMonth][leadId]={done};
+  saveWakeData();
+  renderWakeTab();
+}
+
+// ═══════════════════════════════════════════
+// updateGoal (existing, kept here)
 function updateGoal(){
   const elv=document.getElementById('goal-input-val');
   const v=parseInt(elv&&elv.value);
