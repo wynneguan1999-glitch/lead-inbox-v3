@@ -249,30 +249,41 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .issue-text b{font-weight:600}
 
 /* ═══ 唤醒工作单 CSS ══════════════════════════════ */
-#wake-body{overflow-x:auto;overflow-y:auto}
-.wake-columns{display:flex;gap:14px;align-items:flex-start;min-width:0}
-.wake-group{flex:1;min-width:200px;max-width:340px}
-.wake-group-title{font-size:11px;font-weight:500;color:#aaa;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #f2f2f2;display:flex;align-items:center;gap:8px}
+#wake-body{overflow-y:auto}
+/* 列布局 */
+.wake-cols{display:grid;gap:14px;align-items:start}
+.wake-col{background:#fff;border:1px solid #eee;border-radius:13px;overflow:hidden}
+.wake-col-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #f2f2f2;background:#fafaf8}
+.wake-col-name{font-size:12px;font-weight:600;color:#1a1a1a}
 .wake-group-badge{font-size:10px;background:#f0f0ee;color:#888;padding:2px 8px;border-radius:10px;font-family:monospace}
-.wake-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border:1px solid #eee;border-radius:10px;margin-bottom:8px;transition:border-color .12s}
-.wake-item:hover{border-color:#ddd}
-.wake-item.done{background:#fafaf8;opacity:.72}
-.wake-check{width:18px;height:18px;border:1.5px solid #ddd;border-radius:5px;flex-shrink:0;margin-top:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+/* 行 */
+.wake-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #fafafa;transition:background .1s}
+.wake-row:last-child{border-bottom:none}
+.wake-row:hover{background:#fafafa}
+.wake-row.done{opacity:.55}
+.wake-check{width:16px;height:16px;border:1.5px solid #ddd;border-radius:4px;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
 .wake-check:hover{border-color:#aaa}
 .wake-check.checked{background:#1a1a1a;border-color:#1a1a1a}
-.wake-check.checked::after{content:'✓';font-size:11px;color:#fff;font-weight:700}
-.wake-info{flex:1;min-width:0}
-.wake-name{font-size:13px;font-weight:500;color:#1a1a1a;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wake-item.done .wake-name{text-decoration:line-through;color:#bbb}
-.wake-meta{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
-.wake-tag{font-size:10px;font-family:monospace;color:#aaa;padding:1px 6px;border:1px solid #eee;border-radius:3px;background:#fafafa}
-.wake-contact{font-size:11px;color:#bbb;font-family:monospace}
-.wake-note-display{margin-top:6px;font-size:12px;color:#888;line-height:1.5;font-style:italic;padding:5px 8px;background:#fafaf8;border-radius:5px;border-left:2px solid #e8e8e8;cursor:pointer}
-.wake-save-btn{padding:4px 12px;font-size:11px;border:1px solid #ddd;border-radius:5px;background:#fff;color:#555;cursor:pointer;font-family:inherit;transition:all .12s;margin-top:6px}
-.wake-save-btn:hover{border-color:#aaa;color:#1a1a1a}
+.wake-check.checked::after{content:'✓';font-size:9px;color:#fff;font-weight:700}
+.wake-row-info{flex:1;min-width:0}
+.wake-row-name{font-size:12px;font-weight:500;color:#1a1a1a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px}
+.wake-row.done .wake-row-name{text-decoration:line-through;color:#bbb}
+.wake-row-meta{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.wake-tag{font-size:10px;font-family:monospace;color:#aaa;padding:1px 5px;border:1px solid #eee;border-radius:3px;background:#fafafa}
+.wake-contact{font-size:10px;color:#bbb;font-family:monospace}
+.wake-since{font-size:10px;color:#ccc;font-family:monospace;white-space:nowrap}
+/* 编辑按钮 */
+.wake-edit-btn{flex-shrink:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:5px;background:transparent;color:#ccc;cursor:pointer;padding:0;transition:all .12s;opacity:0;margin-top:1px}
+.wake-row:hover .wake-edit-btn{opacity:1}
+.wake-edit-btn:hover,.wake-edit-btn.active{border-color:#bbb;color:#555;background:#f5f5f5;opacity:1}
+.wake-edit-btn svg{width:11px;height:11px}
+.wake-tag-row{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.wake-sel{font-size:11px;font-family:inherit;padding:4px 8px;border:1px solid #e4e4e4;border-radius:6px;background:#fff;color:#555;outline:none;cursor:pointer;max-width:110px}
+.wake-sel:focus{border-color:#aaa}
+/* 链接 */
 .wake-link{color:#1a1a1a;text-decoration:underline;text-underline-offset:2px;text-decoration-color:#ddd}
 .wake-link:hover{text-decoration-color:#aaa}
-.wake-item.done .wake-link{color:#bbb}
+.wake-row.done .wake-link{color:#bbb}
 .wake-empty{text-align:center;padding:40px 20px;color:#ccc;font-size:13px}
 .wake-empty-icon{font-size:32px;margin-bottom:10px}
 
@@ -898,6 +909,7 @@ async function saveEdit(){
     if(l)Object.assign(l,patch);
     closeEdit();
     applyFilters(false);
+    renderWakeTab();
   }catch(e){alert('保存失败：'+e.message);}
   finally{setSyncing(false);}
 }
@@ -1311,6 +1323,8 @@ function renderWakeMonthPills(){
 
 function setWakeMonth(key){wakeMonth=key;renderWakeMonthPills();renderWakeTab();}
 
+const wakeExpanded=new Set(); // 展开标签编辑的 leadId
+
 function renderWakeTab(){
   renderWakeMonthPills();
   const el=document.getElementById('wake-body');
@@ -1321,7 +1335,7 @@ function renderWakeTab(){
   const doneCount=wakeLeads.filter(l=>monthWake[l.id]?.done).length;
   const pending=wakeLeads.length-doneCount;
 
-  // 更新 Tab 角标
+  // Tab 角标
   const badge=document.getElementById('wake-badge');
   if(badge){if(pending>0){badge.style.display='inline';badge.textContent=pending;}else badge.style.display='none';}
 
@@ -1331,7 +1345,7 @@ function renderWakeTab(){
     return;
   }
 
-  document.getElementById('wake-summary').textContent=`${doneCount}/${wakeLeads.length} 已完成`;
+  document.getElementById('wake-summary').textContent=`${doneCount} / ${wakeLeads.length} 已完成`;
 
   // 按负责人分组
   const groups={};
@@ -1344,43 +1358,85 @@ function renderWakeTab(){
   const cols=Object.entries(groups).sort((a,b)=>a[0].localeCompare(b[0])).map(([who,leads])=>{
     const groupDone=leads.filter(l=>monthWake[l.id]?.done).length;
     const items=leads.map(l=>{
-      const state=monthWake[l.id]||{done:false};
-      const isDone=state.done;
-      const contact=[l.contact_name,l.phone||l.wechat||l.email_contact].filter(Boolean).join(' · ');
-      const months=monthsSince(l.created_at);
-      const sinceLabel=months===0?'不足1个月':`已建联 ${months} 个月`;
-
+      const isDone=!!(monthWake[l.id]?.done);
       const nameVal=l.value||'—';
       const isUrl=/^https?:\/\//i.test(nameVal);
       const nameHtml=isUrl
         ?`<a href="${esc(nameVal)}" target="_blank" rel="noopener" class="wake-link">${esc(nameVal)}</a>`
         :esc(nameVal);
+      const months=monthsSince(l.created_at);
+      const sinceLabel=months<=1?'建联 1 个月':`建联 ${months} 个月`;
+      const contact=[l.contact_name,l.phone||l.wechat||l.email_contact].filter(Boolean).join(' · ');
 
-      return`<div class="wake-item${isDone?' done':''}" id="wake-item-${l.id}">
-        <div class="wake-check${isDone?' checked':''}" onclick="wakeToggle('${l.id}',${!isDone})"></div>
-        <div class="wake-info">
-          <div class="wake-name">${nameHtml}</div>
-          <div class="wake-meta">
-            ${l.channel?`<span class="wake-tag">${esc(l.channel)}</span>`:''}
-            ${l.quality?`<span class="wake-tag">${esc(l.quality)}</span>`:''}
-            ${contact?`<span class="wake-contact">${esc(contact)}</span>`:''}
+      const expanded=wakeExpanded.has(l.id);
+
+      // 行内标签选择器（展开时显示）
+      const mkSelect=(label,field,opts,cur)=>{
+        const id=`wks-${l.id}-${field}`;
+        const optHtml=`<option value="">— ${label} —</option>`+opts.map(o=>`<option value="${esc(o.name)}"${cur===o.name?' selected':''}>${esc(o.name)}</option>`).join('');
+        return`<select class="wake-sel" id="${id}" onchange="wakeUpdateField('${l.id}','${field}',this.value)">${optHtml}</select>`;
+      };
+      const tagEditor=expanded?`<div class="wake-tag-row">
+        ${mkSelect('状态','status',allStatuses,l.status)}
+        ${mkSelect('质量','quality',allQualities,l.quality)}
+        ${mkSelect('价值','priority',allPriorities,l.priority)}
+      </div>`:'';
+
+      return`<div class="wake-row${isDone?' done':''}">
+        <div style="display:flex;align-items:flex-start;gap:10px;width:100%">
+          <div class="wake-check${isDone?' checked':''}" onclick="wakeToggle('${l.id}',${!isDone})" style="margin-top:2px"></div>
+          <div class="wake-row-info">
+            <div class="wake-row-name">${nameHtml}</div>
+            <div class="wake-row-meta">
+              ${l.channel?`<span class="wake-tag">${esc(l.channel)}</span>`:''}
+              ${l.status?`<span class="wake-tag" style="border-color:#ddd">${esc(l.status)}</span>`:''}
+              ${l.quality?`<span class="wake-tag">${esc(l.quality)}</span>`:''}
+              ${l.priority?`<span class="wake-tag">${esc(l.priority)}</span>`:''}
+              ${contact?`<span class="wake-contact">${esc(contact)}</span>`:''}
+              <span class="wake-since">${sinceLabel}</span>
+            </div>
+            ${tagEditor}
           </div>
+          <button class="wake-edit-btn${expanded?' active':''}" onclick="wakeToggleExpand('${l.id}')" title="修改标签">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5l2 2-7 7H4.5v-2l7-7z"/><path d="M10 4l2 2"/></svg>
+          </button>
         </div>
-        <div class="wake-since">${sinceLabel}</div>
       </div>`;
     }).join('');
 
-    return`<div class="wake-group">
-      <div class="wake-group-title">${esc(who)}<span class="wake-group-badge">${groupDone}/${leads.length}</span></div>
+    return`<div class="wake-col">
+      <div class="wake-col-head">
+        <span class="wake-col-name">${esc(who)}</span>
+        <span class="wake-group-badge">${groupDone}/${leads.length}</span>
+      </div>
       ${items}
     </div>`;
-  });
-  el.innerHTML=`<div class="wake-columns">${cols.join('')}</div>`;
+  }).join('');
+
+  el.innerHTML=`<div class="wake-cols" style="grid-template-columns:repeat(${Object.keys(groups).length},1fr)">${cols}</div>`;
 }
 
 function monthsSince(ts){
   const now=new Date(),d=new Date(ts);
   return(now.getFullYear()-d.getFullYear())*12+(now.getMonth()-d.getMonth());
+}
+
+function wakeToggleExpand(leadId){
+  if(wakeExpanded.has(leadId))wakeExpanded.delete(leadId);
+  else wakeExpanded.add(leadId);
+  renderWakeTab();
+}
+
+async function wakeUpdateField(leadId,field,value){
+  const l=allLeads.find(x=>x.id===leadId);
+  if(!l)return;
+  const patch={[field]:value||null};
+  try{
+    await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify(patch)});
+    Object.assign(l,patch);
+    applyFilters(false);
+    renderWakeTab();
+  }catch(e){alert('保存失败：'+e.message);}
 }
 
 function wakeToggle(leadId,done){
