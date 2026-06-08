@@ -102,6 +102,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .toolbar-btn{padding:6px 14px;font-size:12px;border:1px solid #e8e8e8;border-radius:8px;background:#fff;color:#555;cursor:pointer;font-family:inherit}
 .toolbar-btn:hover{border-color:#aaa}
 
+/* ─── 批量操作 ─── */
+.bulk-check{width:15px;height:15px;border:1.5px solid #ddd;border-radius:4px;flex-shrink:0;cursor:pointer;transition:all .12s;position:relative;margin-top:1px}
+.bulk-check:hover{border-color:#aaa}
+.bulk-check.checked{background:#1a1a1a;border-color:#1a1a1a}
+.bulk-check.checked::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:700}
+.bulk-check.partial{background:#888;border-color:#888}
+.bulk-check.partial::after{content:'–';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:700}
+.bulk-bar{display:flex;align-items:center;gap:8px;padding:10px 15px;background:#1a1a1a;border-radius:8px;margin-bottom:8px;flex-wrap:wrap}
+.bulk-bar.hidden{display:none}
+.bulk-count{font-size:12px;color:#fff;font-weight:500;white-space:nowrap;margin-right:4px}
+.bulk-sel{font-size:12px;padding:5px 10px;border:1px solid #444;border-radius:6px;background:#2a2a2a;color:#ddd;font-family:inherit;outline:none;cursor:pointer}
+.bulk-apply{padding:5px 14px;font-size:12px;font-weight:500;border:none;border-radius:6px;background:#fff;color:#1a1a1a;cursor:pointer;font-family:inherit}
+.bulk-apply:hover{opacity:.85}
+.bulk-cancel{padding:5px 10px;font-size:12px;border:1px solid #444;border-radius:6px;background:transparent;color:#aaa;cursor:pointer;font-family:inherit}
+.bulk-cancel:hover{color:#fff;border-color:#888}
+.t-row.selected{background:#f5f5ff!important}
+
 /* ─── 表格（7 列 + priority）─── */
 .table-wrap{background:#fff;border-radius:13px;border:1px solid #eee;overflow:visible}
 .t-head,.t-row{display:grid;grid-template-columns:minmax(0,1.4fr) 82px 95px 82px 88px 100px 110px 68px;gap:7px;padding:9px 15px;align-items:center}
@@ -485,7 +502,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 
   <div class="table-wrap">
     <div class="t-head">
-      <div>线索内容 / 联系人</div>
+      <div style="display:flex;align-items:center;gap:8px;min-width:0"><div class="bulk-check" id="select-all-check" onclick="toggleSelectAll()" title="全选"></div><span>线索内容 / 联系人</span></div>
       <div>渠道</div>
       <div>状态</div>
       <div>质量</div>
@@ -493,6 +510,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
       <div>负责人</div>
       <div>时间</div>
       <div>操作</div>
+    </div>
+    <!-- 批量操作栏 -->
+    <div class="bulk-bar hidden" id="bulk-bar">
+      <span class="bulk-count" id="bulk-count"></span>
+      <select class="bulk-sel" id="bulk-status"><option value="">— 修改状态 —</option></select>
+      <select class="bulk-sel" id="bulk-quality"><option value="">— 修改质量 —</option></select>
+      <select class="bulk-sel" id="bulk-priority"><option value="">— 修改价值 —</option></select>
+      <button class="bulk-apply" onclick="applyBulk()">应用</button>
+      <button class="bulk-cancel" onclick="clearSelection()">取消</button>
     </div>
     <div id="tbody"><div class="empty">正在加载...</div></div>
     <div class="pagination hidden" id="pagination">
@@ -796,8 +822,8 @@ function renderTable(filtered){
     const prHtml=l.priority
       ?`<span class="badge-priority" style="${badgeStyle(prColor(l.priority))}" onclick="openDrop('${l.id}','pr',this)">${esc(l.priority)}</span>`
       :`<button class="badge-empty" onclick="openDrop('${l.id}','pr',this)">+ 标记</button>`;
-    return`<div class="t-row">
-      <div><div class="lead-val">${valHtml}</div>${contacts.length?`<div class="lead-sub">${contacts.join('')}</div>`:''}</div>
+    return`<div class="t-row" id="row-${l.id}">
+      <div style="display:flex;align-items:flex-start;gap:8px;min-width:0"><div class="bulk-check row-check" id="chk-${l.id}" onclick="toggleRowSelect('${l.id}')"></div><div style="min-width:0;flex:1"><div class="lead-val">${valHtml}</div>${contacts.length?`<div class="lead-sub">${contacts.join('')}</div>`:''}</div></div>
       <div><span class="badge" style="${badgeStyle(chColor(l.channel))}" onclick="openDrop('${l.id}','ch',this)">${esc(l.channel||'—')}</span></div>
       <div><span class="badge" style="${badgeStyle(stColor(l.status))}" onclick="openDrop('${l.id}','st',this)">${esc(l.status||'—')}</span></div>
       <div>${qlHtml}</div>
@@ -816,6 +842,8 @@ function renderTable(filtered){
     </div>`;
   }).join('');
   renderPagination(filtered.length,totalPages);
+  populateBulkSelects();
+  updateBulkBar();
 }
 
 function renderPagination(total,totalPages){
@@ -864,6 +892,96 @@ async function updateLeadField(id,field,value){
   setSyncing(true);
   try{await api(`/leads?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({[field]:value})});const l=allLeads.find(x=>x.id===id);if(l)l[field]=value;applyFilters(false);renderTeam();renderAnalyticsTab();renderGoalTab();}
   catch(e){alert('更新失败：'+e.message);}finally{setSyncing(false);}
+}
+
+// ═══════════════════════════════════════════
+// 批量操作
+// ═══════════════════════════════════════════
+let selectedIds=new Set();
+
+function updateBulkBar(){
+  const bar=document.getElementById('bulk-bar');
+  const cnt=document.getElementById('bulk-count');
+  const chk=document.getElementById('select-all-check');
+  if(!bar)return;
+  if(selectedIds.size>0){
+    bar.classList.remove('hidden');
+    cnt.textContent=`已选 ${selectedIds.size} 条`;
+  } else {
+    bar.classList.add('hidden');
+  }
+  // 全选框状态
+  if(!chk)return;
+  const visibleIds=getCurrentPageIds();
+  const allChecked=visibleIds.length>0&&visibleIds.every(id=>selectedIds.has(id));
+  const someChecked=visibleIds.some(id=>selectedIds.has(id));
+  chk.classList.toggle('checked',allChecked);
+  chk.classList.toggle('partial',!allChecked&&someChecked);
+}
+
+function getCurrentPageIds(){
+  return[...document.querySelectorAll('.row-check')].map(el=>el.id.replace('chk-',''));
+}
+
+function toggleRowSelect(id){
+  if(selectedIds.has(id))selectedIds.delete(id);else selectedIds.add(id);
+  const chk=document.getElementById('chk-'+id);
+  if(chk)chk.classList.toggle('checked',selectedIds.has(id));
+  const row=document.getElementById('row-'+id);
+  if(row)row.classList.toggle('selected',selectedIds.has(id));
+  updateBulkBar();
+}
+
+function toggleSelectAll(){
+  const ids=getCurrentPageIds();
+  const allChecked=ids.every(id=>selectedIds.has(id));
+  if(allChecked){ids.forEach(id=>selectedIds.delete(id));}
+  else{ids.forEach(id=>selectedIds.add(id));}
+  ids.forEach(id=>{
+    document.getElementById('chk-'+id)?.classList.toggle('checked',selectedIds.has(id));
+    document.getElementById('row-'+id)?.classList.toggle('selected',selectedIds.has(id));
+  });
+  updateBulkBar();
+}
+
+function clearSelection(){
+  selectedIds.clear();
+  document.querySelectorAll('.row-check.checked').forEach(el=>el.classList.remove('checked'));
+  document.querySelectorAll('.t-row.selected').forEach(el=>el.classList.remove('selected'));
+  updateBulkBar();
+}
+
+async function applyBulk(){
+  const status=document.getElementById('bulk-status').value;
+  const quality=document.getElementById('bulk-quality').value;
+  const priority=document.getElementById('bulk-priority').value;
+  if(!status&&!quality&&!priority){alert('请至少选择一个要修改的标签');return;}
+  if(!selectedIds.size)return;
+  const patch={};
+  if(status)patch.status=status;
+  if(quality)patch.quality=quality;
+  if(priority)patch.priority=priority;
+  setSyncing(true);
+  try{
+    await Promise.all([...selectedIds].map(id=>
+      api(`/leads?id=eq.${id}`,{method:'PATCH',body:JSON.stringify(patch)})
+    ));
+    allLeads.forEach(l=>{if(selectedIds.has(l.id))Object.assign(l,patch);});
+    clearSelection();
+    // reset selects
+    ['bulk-status','bulk-quality','bulk-priority'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    applyFilters(false);
+  }catch(e){alert('批量修改失败：'+e.message);}
+  setSyncing(false);
+}
+
+function populateBulkSelects(){
+  const s=document.getElementById('bulk-status');
+  const q=document.getElementById('bulk-quality');
+  const p=document.getElementById('bulk-priority');
+  if(s&&s.options.length<=1)allStatuses.forEach(x=>{const o=document.createElement('option');o.value=x.name;o.textContent=x.name;s.appendChild(o);});
+  if(q&&q.options.length<=1)allQualities.forEach(x=>{const o=document.createElement('option');o.value=x.name;o.textContent=x.name;q.appendChild(o);});
+  if(p&&p.options.length<=1)allPriorities.forEach(x=>{const o=document.createElement('option');o.value=x.name;o.textContent=x.name;p.appendChild(o);});
 }
 
 // ═══════════════════════════════════════════
@@ -1100,12 +1218,18 @@ function renderGoalTab(){
     .filter(n=>!EXCLUDED_MEMBERS.has(n))
     .sort();
 
-  // 按所选月份过滤（用 created_at 判断线索录入月份）
+  // 线索量：按 created_at 统计该月录入；合作数：按 updated_at 统计该月状态切换
   renderGoalMonthPills();
   const [gYear,gMon]=goalMonth?goalMonth.split('-').map(Number):[0,0];
   function inGoalMonth(l){
     if(!goalMonth)return true;
     const d=new Date(l.created_at);
+    return d.getFullYear()===gYear&&d.getMonth()+1===gMon;
+  }
+  function convInGoalMonth(l){
+    if(!goalMonth)return CONV.has(l.status);
+    if(!CONV.has(l.status))return false;
+    const d=new Date(l.updated_at||l.created_at);
     return d.getFullYear()===gYear&&d.getMonth()+1===gMon;
   }
   const monthLeads=allLeads.filter(inGoalMonth);
@@ -1119,13 +1243,19 @@ function renderGoalTab(){
     if(CONV.has(l.status))globalChMap[c].conv++;
   });
 
-  // 当月渠道维度（用于合作占比分配）
+  // 当月渠道维度（线索量用当月录入，合作数用当月状态切换）
   const chMap={};
   monthLeads.forEach(l=>{
     const c=l.channel||'其他';
     if(!chMap[c])chMap[c]={t:0,conv:0};
     chMap[c].t++;
-    if(CONV.has(l.status))chMap[c].conv++;
+  });
+  // 合作数按 updated_at 统计（全量线索中，该月切换到合作状态的）
+  allLeads.forEach(l=>{
+    if(!convInGoalMonth(l))return;
+    const c=l.channel||'其他';
+    if(!chMap[c])chMap[c]={t:0,conv:0};
+    chMap[c].conv++;
   });
   const totalLeads=monthLeads.length;
   const chRows=Object.entries(chMap).sort((a,b)=>b[1].t-a[1].t);
@@ -1135,7 +1265,8 @@ function renderGoalTab(){
   const personData=names.map(name=>{
     const leads=monthLeads.filter(l=>(l.added_by||'').trim()===name);
     const total=leads.length;
-    const conv=leads.filter(l=>CONV.has(l.status)).length;
+    // 合作数：该人名下，当月 updated_at 切换到合作状态的线索（不限当月录入）
+    const conv=allLeads.filter(l=>(l.added_by||'').trim()===name&&convInGoalMonth(l)).length;
     const target=monthGoals[name]!==undefined?monthGoals[name]:10;
     const remaining=Math.max(0,target-conv);
 
@@ -1145,7 +1276,7 @@ function renderGoalTab(){
       const c=l.channel||'其他';
       if(!pChMap[c])pChMap[c]={t:0,conv:0};
       pChMap[c].t++;
-      if(CONV.has(l.status))pChMap[c].conv++;
+      if(convInGoalMonth(l))pChMap[c].conv++;
     });
 
     // 该人各渠道全量历史（用于个人转化率，比当月更稳定）
