@@ -272,10 +272,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .active-col-pri{font-size:10px;font-weight:600;font-family:monospace;padding:3px 9px;border-radius:5px}
 .active-col-title{font-size:12px;font-weight:600;color:#1a1a1a;flex:1}
 .active-col-count{font-size:11px;color:#bbb;font-family:monospace}
-.active-card{padding:12px 15px;border-bottom:1px solid #fafafa;transition:background .1s;cursor:default}
+.active-card{padding:12px 15px;border-bottom:1px solid #fafafa;transition:background .1s;cursor:default;position:relative}
 .active-card:last-child{border-bottom:none}
 .active-card:hover{background:#fafafa}
 .active-card-name{font-size:13px;font-weight:500;color:#1a1a1a;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.active-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:5px}
+.active-card-top .active-card-name{margin-bottom:0;flex:1}
+.prob-circle{width:38px;height:38px;border-radius:50%;border:1.5px solid;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:transform .18s cubic-bezier(.34,1.56,.64,1),box-shadow .18s;line-height:1;gap:1px;position:relative}
+.prob-circle:hover{transform:scale(1.12) rotate(-4deg);box-shadow:0 4px 12px rgba(0,0,0,.12)}
+.prob-circle.has-val{animation:prob-pop .35s cubic-bezier(.34,1.56,.64,1)}
+@keyframes prob-pop{0%{transform:scale(.6)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
+.prob-emoji{font-size:13px;line-height:1}
+.prob-circle:not(.has-val) .prob-emoji{font-size:15px;opacity:.5}
+.prob-num{font-size:8px;font-weight:700;font-family:monospace;letter-spacing:-.02em}
+.prob-picker{position:absolute;z-index:50;background:#fff;border:1px solid #eee;border-radius:14px;padding:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;box-shadow:0 10px 32px rgba(0,0,0,.14);width:172px;animation:prob-pick-in .15s ease-out}
+@keyframes prob-pick-in{from{opacity:0;transform:translateY(-4px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+.prob-opt{aspect-ratio:1;border-radius:50%;border:1.5px solid;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:transform .12s cubic-bezier(.34,1.56,.64,1);gap:0;line-height:1}
+.prob-opt:hover{transform:scale(1.18)}
+.prob-opt.picked{box-shadow:0 0 0 2px #1a1a1a}
+.prob-opt-emoji{font-size:13px}
+.prob-opt-num{font-size:8px;font-weight:700;font-family:monospace;margin-top:1px}
+.prob-clear{grid-column:span 4;aspect-ratio:auto;border-radius:8px;background:#fafafa;color:#aaa;border-color:#eee;font-size:11px;font-weight:500;font-family:inherit;height:26px}
+.prob-clear:hover{transform:none;background:#f0f0f0;color:#888}
 .active-card-name a{color:#1a1a1a;text-decoration:none}
 .active-card-name a:hover{text-decoration:underline;text-underline-offset:2px;text-decoration-color:#bbb}
 .active-tags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:5px}
@@ -720,6 +738,7 @@ async function loadAll(){
     renderGoalMonthPills();
     renderGoalTab();
     renderActiveMonthPills();
+    loadSignProb();
     renderActiveTab();
     loadWakeData();
     renderWakeMonthPills();
@@ -950,6 +969,49 @@ const ACTIVE_PRI_STYLE={
 };
 
 let activeMonth=''; // 'YYYY-M'
+let signProb={}; // {monthKey: {leadId: 0-100}}
+
+function loadSignProb(){
+  const s=localStorage.getItem('liSignProb');
+  if(s)try{signProb=JSON.parse(s);}catch(e){}
+}
+function saveSignProb(){localStorage.setItem('liSignProb',JSON.stringify(signProb));}
+
+function probColor(v){
+  if(v==null)return{bg:'#fafafa',color:'#ccc',border:'#eee',emoji:'❔'};
+  if(v>=90)return{bg:'linear-gradient(135deg,#FFE259,#FFA751)',color:'#7a4a00',border:'#ffcf80',emoji:'🔥'};
+  if(v>=70)return{bg:'linear-gradient(135deg,#A8E063,#56AB2F)',color:'#2a5a0a',border:'#b8e890',emoji:'😎'};
+  if(v>=50)return{bg:'linear-gradient(135deg,#FFD89B,#FFB36B)',color:'#8a4800',border:'#ffd8a8',emoji:'🙂'};
+  if(v>=30)return{bg:'linear-gradient(135deg,#FFF1B8,#FFE082)',color:'#9a7a00',border:'#ffe8b0',emoji:'🤔'};
+  if(v>=10)return{bg:'linear-gradient(135deg,#D8D8DC,#B0B0B8)',color:'#444',border:'#c4c4cc',emoji:'🥲'};
+  return{bg:'linear-gradient(135deg,#9090a0,#5a5a68)',color:'#fff',border:'#7a7a88',emoji:'💤'};
+}
+
+function toggleProbPicker(leadId,e){
+  e.stopPropagation();
+  const picker=document.getElementById('prob-picker-'+leadId);
+  const isOpen=picker.style.display!=='none';
+  document.querySelectorAll('.prob-picker').forEach(p=>p.style.display='none');
+  if(!isOpen){
+    picker.style.display='grid';
+    // 定位在圆圈下方
+    const circle=e.currentTarget;
+    const rect=circle.getBoundingClientRect();
+    const cardRect=circle.closest('.active-card').getBoundingClientRect();
+    picker.style.top=(rect.bottom-cardRect.top+4)+'px';
+    picker.style.right=(cardRect.right-rect.right)+'px';
+  }
+}
+document.addEventListener('click',()=>{document.querySelectorAll('.prob-picker').forEach(p=>p.style.display='none');});
+
+function setProb(leadId,val,e){
+  e.stopPropagation();
+  if(!signProb[activeMonth])signProb[activeMonth]={};
+  if(val==null)delete signProb[activeMonth][leadId];
+  else signProb[activeMonth][leadId]=val;
+  saveSignProb();
+  renderActiveTab();
+}
 
 function renderActiveMonthPills(){
   const now=new Date();
@@ -993,6 +1055,7 @@ function renderActiveTab(){
 
   const nonEmpty=ACTIVE_PRI_ORDER.filter(p=>groups[p].length>0);
   const now=Date.now();
+  const monthProb=signProb[activeMonth]||{};
   const cols=nonEmpty.map(pri=>{
     const st=ACTIVE_PRI_STYLE[pri]||{bg:'#f5f5f3',color:'#999'};
     const items=groups[pri].map(l=>{
@@ -1004,8 +1067,25 @@ function renderActiveTab(){
       const contact=[l.contact_name,l.phone||l.wechat||l.email_contact].filter(Boolean).join(' · ');
       const ageDays=Math.floor((now-new Date(l.created_at).getTime())/86400000);
       const ageLabel=ageDays===0?'今天':ageDays===1?'昨天':`${ageDays}天前`;
+      const prob=monthProb[l.id];
+      const probStyle=probColor(prob);
       return`<div class="active-card">
-        <div class="active-card-name">${nameHtml}</div>
+        <div class="active-card-top">
+          <div class="active-card-name">${nameHtml}</div>
+          <div class="prob-circle${prob!=null?' has-val':''}" style="background:${probStyle.bg};color:${probStyle.color};border-color:${probStyle.border}" onclick="toggleProbPicker('${l.id}',event)" title="本月签约可能性">
+            <span class="prob-emoji">${probStyle.emoji}</span>
+            ${prob!=null?`<span class="prob-num">${prob}%</span>`:''}
+          </div>
+        </div>
+        <div class="prob-picker" id="prob-picker-${l.id}" style="display:none">
+          ${[100,90,80,70,60,50,40,30,20,10,0].map(v=>{
+            const s=probColor(v);
+            return`<div class="prob-opt${prob===v?' picked':''}" style="background:${s.bg};color:${s.color};border-color:${s.border}" onclick="setProb('${l.id}',${v},event)" title="${v}%">
+              <span class="prob-opt-emoji">${s.emoji}</span><span class="prob-opt-num">${v}</span>
+            </div>`;
+          }).join('')}
+          <div class="prob-opt prob-clear" onclick="setProb('${l.id}',null,event)">清除</div>
+        </div>
         <div class="active-tags">
           ${l.status?`<span class="active-tag status">${esc(l.status)}</span>`:''}
           ${l.channel?`<span class="active-tag">${esc(l.channel)}</span>`:''}
