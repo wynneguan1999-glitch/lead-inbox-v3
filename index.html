@@ -714,11 +714,23 @@ async function api(path,opts={}){
   const t=await r.text();return t?JSON.parse(t):null;
 }
 
+async function fetchAllLeads(){
+  const PAGE=1000;
+  let all=[],offset=0;
+  while(true){
+    const batch=await api(`/leads?select=*&order=created_at.desc&limit=${PAGE}&offset=${offset}`);
+    all=all.concat(batch);
+    if(batch.length<PAGE)break;
+    offset+=PAGE;
+  }
+  return all;
+}
+
 async function loadAll(){
   setSyncing(true);
   try{
     [allLeads,allChannels,allStatuses,allQualities,allPriorities]=await Promise.all([
-      api('/leads?select=*&order=created_at.desc'),
+      fetchAllLeads(),
       api('/lead_channels?select=*&order=sort_order'),
       api('/lead_statuses?select=*&order=sort_order'),
       api('/lead_qualities?select=*&order=sort_order'),
@@ -1654,14 +1666,25 @@ function loadWakeData(){
 function saveWakeData(){localStorage.setItem('liWakeData',JSON.stringify(wakeData));}
 
 function getWakeLeads(){
-  // 唤醒条件：状态为「建联中」，且录入时间距今超过一个完整自然月
   const now=new Date();
   const thisMonthStart=new Date(now.getFullYear(),now.getMonth(),1);
+  const monthWake=wakeData[wakeMonth]||{};
+  const [wYear,wMon]=wakeMonth?wakeMonth.split('-').map(Number):[now.getFullYear(),now.getMonth()+1];
+  const isCurrentMonth=wYear===now.getFullYear()&&wMon===now.getMonth()+1;
+
   return allLeads.filter(l=>{
     if(l.status!=='建联中')return false;
     const created=new Date(l.created_at);
-    // 必须在当月开始之前录入（即至少经历过一个完整月）
-    return created<thisMonthStart;
+    if(isCurrentMonth){
+      // 当月：录入时间早于本月1号（至少经历过一个完整月）
+      // 且：未勾选 或 勾选了（都显示，勾选的灰显）
+      // 关键：未勾选的永不消失，勾选的本月内继续显示
+      return created<thisMonthStart;
+    } else {
+      // 历史月份：录入时间早于该月1号
+      const monthStart=new Date(wYear,wMon-1,1);
+      return created<monthStart;
+    }
   });
 }
 
