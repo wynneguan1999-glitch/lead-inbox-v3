@@ -750,7 +750,6 @@ async function loadAll(){
     renderGoalMonthPills();
     renderGoalTab();
     renderActiveMonthPills();
-    loadSignProb();
     renderActiveTab();
     loadWakeData();
     renderWakeMonthPills();
@@ -981,13 +980,6 @@ const ACTIVE_PRI_STYLE={
 };
 
 let activeMonth=''; // 'YYYY-M'
-let signProb={}; // {monthKey: {leadId: 0-100}}
-
-function loadSignProb(){
-  const s=localStorage.getItem('liSignProb');
-  if(s)try{signProb=JSON.parse(s);}catch(e){}
-}
-function saveSignProb(){localStorage.setItem('liSignProb',JSON.stringify(signProb));}
 
 function probColor(v){
   if(v==null)return{bg:'#fafafa',color:'#ccc',border:'#eee',emoji:'❔'};
@@ -1016,13 +1008,17 @@ function toggleProbPicker(leadId,e){
 }
 document.addEventListener('click',()=>{document.querySelectorAll('.prob-picker').forEach(p=>p.style.display='none');});
 
-function setProb(leadId,val,e){
+async function setProb(leadId,val,e){
   e.stopPropagation();
-  if(!signProb[activeMonth])signProb[activeMonth]={};
-  if(val==null)delete signProb[activeMonth][leadId];
-  else signProb[activeMonth][leadId]=val;
-  saveSignProb();
-  renderActiveTab();
+  document.querySelectorAll('.prob-picker').forEach(p=>p.style.display='none');
+  setSyncing(true);
+  try{
+    await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify({sign_prob:val})});
+    const l=allLeads.find(x=>x.id===leadId);
+    if(l)l.sign_prob=val;
+    renderActiveTab();
+  }catch(e){alert('保存失败：'+e.message);}
+  setSyncing(false);
 }
 
 function renderActiveMonthPills(){
@@ -1067,7 +1063,6 @@ function renderActiveTab(){
 
   const nonEmpty=ACTIVE_PRI_ORDER.filter(p=>groups[p].length>0);
   const now=Date.now();
-  const monthProb=signProb[activeMonth]||{};
   const cols=nonEmpty.map(pri=>{
     const st=ACTIVE_PRI_STYLE[pri]||{bg:'#f5f5f3',color:'#999'};
     const items=groups[pri].map(l=>{
@@ -1079,7 +1074,7 @@ function renderActiveTab(){
       const contact=[l.contact_name,l.phone||l.wechat||l.email_contact].filter(Boolean).join(' · ');
       const ageDays=Math.floor((now-new Date(l.created_at).getTime())/86400000);
       const ageLabel=ageDays===0?'今天':ageDays===1?'昨天':`${ageDays}天前`;
-      const prob=monthProb[l.id];
+      const prob=l.sign_prob!=null?l.sign_prob:null;
       const probStyle=probColor(prob);
       return`<div class="active-card">
         <div class="active-card-top">
@@ -1656,19 +1651,33 @@ function updatePersonGoal(name){
 // 唤醒工作单
 // ═══════════════════════════════════════════
 let wakeMonth='';
-// wakeData: { monthKey: { leadId: { done:bool, note:string } } }
+// wakeData: { 'leadId|month': true }  — in-memory cache loaded from Supabase
 let wakeData={};
 
-function loadWakeData(){
-  const s=localStorage.getItem('liWakeData');
-  if(s)try{wakeData=JSON.parse(s);}catch(e){}
+async function loadWakeData(){
+  try{
+    const rows=await api('/wake_records?select=lead_id,month,done');
+    wakeData={};
+    rows.forEach(r=>{wakeData[r.lead_id+'|'+r.month]=r.done;});
+  }catch(e){console.warn('wake_records load failed',e);}
 }
-function saveWakeData(){localStorage.setItem('liWakeData',JSON.stringify(wakeData));}
+
+async function wakeToggle(leadId,done){
+  const key=leadId+'|'+wakeMonth;
+  wakeData[key]=done;
+  renderWakeTab();
+  try{
+    await api('/wake_records',{
+      method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({lead_id:leadId,month:wakeMonth,done,updated_at:new Date().toISOString()})
+    });
+  }catch(e){alert('保存失败：'+e.message);}
+}
 
 function getWakeLeads(){
   const now=new Date();
   const thisMonthStart=new Date(now.getFullYear(),now.getMonth(),1);
-  const monthWake=wakeData[wakeMonth]||{};
   const [wYear,wMon]=wakeMonth?wakeMonth.split('-').map(Number):[now.getFullYear(),now.getMonth()+1];
   const isCurrentMonth=wYear===now.getFullYear()&&wMon===now.getMonth()+1;
 
@@ -1713,9 +1722,9 @@ function renderWakeTab(){
   const el=document.getElementById('wake-body');
   if(!el)return;
 
+  const isDone=id=>!!(wakeData[id+'|'+wakeMonth]);
   const wakeLeads=getWakeLeads();
-  const monthWake=wakeData[wakeMonth]||{};
-  const doneCount=wakeLeads.filter(l=>monthWake[l.id]?.done).length;
+  const doneCount=wakeLeads.filter(l=>isDone(l.id)).length;
   const pending=wakeLeads.length-doneCount;
 
   // Tab 角标
@@ -1739,9 +1748,9 @@ function renderWakeTab(){
   });
 
   const cols=Object.entries(groups).sort((a,b)=>a[0].localeCompare(b[0])).map(([who,leads])=>{
-    const groupDone=leads.filter(l=>monthWake[l.id]?.done).length;
+    const groupDone=leads.filter(l=>isDone(l.id)).length;
     const items=leads.map(l=>{
-      const isDone=!!(monthWake[l.id]?.done);
+      const isLeadDone=isDone(l.id);
       const nameVal=l.value||'—';
       const isUrl=/^https?:\/\//i.test(nameVal);
       const nameHtml=isUrl
@@ -1765,9 +1774,9 @@ function renderWakeTab(){
         ${mkSelect('价值','priority',allPriorities,l.priority)}
       </div>`:'';
 
-      return`<div class="wake-row${isDone?' done':''}">
+      return`<div class="wake-row${isLeadDone?' done':''}">
         <div style="display:flex;align-items:flex-start;gap:10px;width:100%">
-          <div class="wake-check${isDone?' checked':''}" onclick="wakeToggle('${l.id}',${!isDone})" style="margin-top:2px"></div>
+          <div class="wake-check${isLeadDone?' checked':''}" onclick="wakeToggle('${l.id}',${!isLeadDone})" style="margin-top:2px"></div>
           <div class="wake-row-info">
             <div class="wake-row-name">${nameHtml}</div>
             <div class="wake-row-meta">
@@ -1820,13 +1829,6 @@ async function wakeUpdateField(leadId,field,value){
     applyFilters(false);
     renderWakeTab();
   }catch(e){alert('保存失败：'+e.message);}
-}
-
-function wakeToggle(leadId,done){
-  if(!wakeData[wakeMonth])wakeData[wakeMonth]={};
-  wakeData[wakeMonth][leadId]={done};
-  saveWakeData();
-  renderWakeTab();
 }
 
 // ═══════════════════════════════════════════
