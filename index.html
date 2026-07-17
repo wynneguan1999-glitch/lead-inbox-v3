@@ -945,11 +945,24 @@ function openDrop(leadId,type,anchorEl){
   let html=options.map(o=>{const[bg]=COLORS[o.color]||COLORS.gray;return`<div class="drop-opt" data-id="${esc(leadId)}" data-type="${type}" data-val="${esc(o.name)}"><span class="drop-dot" style="background:${bg}"></span>${esc(o.name)}</div>`;}).join('');
   if(type==='ql'||type==='pr')html+=`<div class="drop-divider"></div><div class="drop-none" data-id="${esc(leadId)}" data-type="${type}" data-val="__clear__">× 清除标记</div>`;
   drop.innerHTML=html;
-  const rect=anchorEl.getBoundingClientRect(),spaceBelow=window.innerHeight-rect.bottom;
+  const rect=anchorEl.getBoundingClientRect();
   drop.style.minWidth=Math.max(110,rect.width+30)+'px';
-  if(spaceBelow<200){drop.style.bottom=(window.innerHeight-rect.top+4)+'px';drop.style.top='';}
-  else{drop.style.top=(rect.bottom+4)+'px';drop.style.bottom='';}
-  drop.style.left=rect.left+'px';
+  // 先临时显示测量真实高度
+  drop.style.visibility='hidden';drop.style.top='0';drop.style.bottom='';
+  drop.classList.add('open');
+  const dropH=drop.offsetHeight;
+  drop.classList.remove('open');drop.style.visibility='';
+  // 根据实际高度决定方向
+  const spaceBelow=window.innerHeight-rect.bottom-8;
+  const spaceAbove=rect.top-8;
+  if(spaceBelow>=dropH||spaceBelow>=spaceAbove){
+    drop.style.top=(rect.bottom+4)+'px';drop.style.bottom='';
+  } else {
+    drop.style.bottom=(window.innerHeight-rect.top+4)+'px';drop.style.top='';
+  }
+  // 防止左边超出
+  const rightEdge=rect.left+parseInt(drop.style.minWidth);
+  drop.style.left=(rightEdge>window.innerWidth-8?Math.max(8,window.innerWidth-parseInt(drop.style.minWidth)-8):rect.left)+'px';
   drop.classList.add('open');openDropId=leadId;openDropType=type;
 }
 function closeDrop(){document.getElementById('global-drop').classList.remove('open');openDropId=null;openDropType=null;}
@@ -1045,7 +1058,7 @@ function renderActiveTab(){
   const [aYear,aMon]=activeMonth?activeMonth.split('-').map(Number):[0,0];
   const leads=allLeads.filter(l=>{
     if(!ACTIVE_PRI_ORDER.includes(l.priority))return false;
-    const d=new Date(l.created_at);
+    const d=new Date(l.updated_at||l.created_at);
     return d.getFullYear()===aYear&&d.getMonth()+1===aMon;
   });
 
@@ -1072,8 +1085,8 @@ function renderActiveTab(){
         ?`<a href="${esc(nameVal)}" target="_blank" rel="noopener">${esc(nameVal)}</a>`
         :esc(nameVal);
       const contact=[l.contact_name,l.phone||l.wechat||l.email_contact].filter(Boolean).join(' · ');
-      const ageDays=Math.floor((now-new Date(l.created_at).getTime())/86400000);
-      const ageLabel=ageDays===0?'今天':ageDays===1?'昨天':`${ageDays}天前`;
+      const ageDays=Math.floor((now-new Date(l.updated_at||l.created_at).getTime())/86400000);
+      const ageLabel=ageDays===0?'今天':ageDays===1?'昨天':`${ageDays}天前标记`;
       const prob=l.sign_prob!=null?l.sign_prob:null;
       const probStyle=probColor(prob);
       return`<div class="active-card">
