@@ -1010,13 +1010,24 @@ function toggleProbPicker(leadId,e){
   const isOpen=picker.style.display!=='none';
   document.querySelectorAll('.prob-picker').forEach(p=>p.style.display='none');
   if(!isOpen){
-    picker.style.display='grid';
-    // 定位在圆圈下方
+    // 先显示测量高度
+    picker.style.visibility='hidden';picker.style.top='';picker.style.bottom='';picker.style.display='grid';
+    const pickerH=picker.offsetHeight;
+    picker.style.display='none';picker.style.visibility='';
     const circle=e.currentTarget;
     const rect=circle.getBoundingClientRect();
-    const cardRect=circle.closest('.active-card').getBoundingClientRect();
-    picker.style.top=(rect.bottom-cardRect.top+4)+'px';
+    const card=circle.closest('.active-card');
+    const cardRect=card.getBoundingClientRect();
+    const spaceBelow=window.innerHeight-rect.bottom-8;
     picker.style.right=(cardRect.right-rect.right)+'px';
+    if(spaceBelow>=pickerH){
+      picker.style.top=(rect.bottom-cardRect.top+4)+'px';
+      picker.style.bottom='';
+    } else {
+      picker.style.bottom=(cardRect.bottom-rect.top+4)+'px';
+      picker.style.top='';
+    }
+    picker.style.display='grid';
   }
 }
 document.addEventListener('click',()=>{document.querySelectorAll('.prob-picker').forEach(p=>p.style.display='none');});
