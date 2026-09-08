@@ -87,7 +87,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .stat-val{font-size:24px;font-weight:600}
 .stat-note{font-size:10px;color:#bbb;margin-top:3px}
 
-/* ─── 工具栏目 ─── */
+/* ─── 工具栏 ─── */
 .toolbar-wrap{background:#fff;border-radius:11px;border:1px solid #eee;padding:13px 16px;margin-bottom:13px}
 .toolbar-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .toolbar-row+.toolbar-row{margin-top:9px;padding-top:9px;border-top:1px solid #f4f4f4}
@@ -727,7 +727,28 @@ async function api(path,opts={}){
 
 async function fetchAllLeads(){
   const PAGE=1000;
-  let all=[],offset=0;
+  // 第一页顺便问一下总条数（Prefer: count=exact 不会增加返回的数据量，只是响应头里多带一个数字）
+  const first=await fetch(`${C.url}/rest/v1/leads?select=*&order=created_at.desc&limit=${PAGE}&offset=0`,{
+    headers:{'apikey':C.key,'Authorization':`Bearer ${C.key}`,'Prefer':'count=exact'}
+  });
+  if(!first.ok)throw new Error(await first.text());
+  const firstBatch=await first.json();
+  if(firstBatch.length<PAGE)return firstBatch; // 不满一页，肯定已经拿完了
+  const range=first.headers.get('content-range'); // 形如 "0-999/4821"
+  const total=range&&range.includes('/')?parseInt(range.split('/')[1]):null;
+  if(total&&total<=PAGE)return firstBatch;
+  if(total){
+    // 拿到了总数：剩下的页一次性并发请求，总请求量不变，只是不用排队等
+    const pageCount=Math.ceil(total/PAGE);
+    const rest=[];
+    for(let p=1;p<pageCount;p++){
+      rest.push(api(`/leads?select=*&order=created_at.desc&limit=${PAGE}&offset=${p*PAGE}`));
+    }
+    const restBatches=await Promise.all(rest);
+    return firstBatch.concat(...restBatches);
+  }
+  // 拿不到总数（比如响应头被挡住了）：退回原来稳妥的串行分页，保证数据不会漏
+  let all=firstBatch.slice(),offset=PAGE;
   while(true){
     const batch=await api(`/leads?select=*&order=created_at.desc&limit=${PAGE}&offset=${offset}`);
     all=all.concat(batch);
@@ -762,7 +783,34 @@ function subscribeRealtime(){
     });
 }
 
+// ═══════════════════════════════════════════
+// 本地缓存（打开页面先秒开旧数据，不用干等网络）
+// ═══════════════════════════════════════════
+function loadCachedSnapshot(){
+  try{
+    const raw=localStorage.getItem('liSnapshot');
+    if(!raw)return false;
+    const snap=JSON.parse(raw);
+    if(!snap||!Array.isArray(snap.allLeads))return false;
+    allLeads=snap.allLeads;
+    allChannels=snap.allChannels||[];
+    allStatuses=snap.allStatuses||[];
+    allQualities=snap.allQualities||[];
+    allPriorities=snap.allPriorities||[];
+    buildWhoPills();renderFilterPills();applyFilters(false);renderTeam();renderDrawer();
+    renderAnalyticsTab();renderGoalMonthPills();renderGoalTab();renderActiveMonthPills();renderActiveTab();
+    renderWakeMonthPills();renderWakeTab();
+    return true;
+  }catch(e){return false}
+}
+function saveSnapshot(){
+  try{
+    localStorage.setItem('liSnapshot',JSON.stringify({allLeads,allChannels,allStatuses,allQualities,allPriorities}));
+  }catch(e){/* 存储空间不够就跳过，不影响主流程 */}
+}
+
 async function loadAll(){
+  const hasCache=loadCachedSnapshot(); // 有缓存的话先用旧数据秒开一版界面
   setSyncing(true);
   try{
     [allLeads,allChannels,allStatuses,allQualities,allPriorities]=await Promise.all([
@@ -790,8 +838,12 @@ async function loadAll(){
     loadWakeData();
     renderWakeMonthPills();
     renderWakeTab();
+    saveSnapshot(); // 拉到最新数据后更新缓存，供下次打开秒开
   }catch(e){
-    document.getElementById('tbody').innerHTML=`<div class="empty">加载失败：${esc(e.message)}</div>`;
+    if(!hasCache){
+      document.getElementById('tbody').innerHTML=`<div class="empty">加载失败：${esc(e.message)}</div>`;
+    }
+    // 有缓存的话，这次网络失败就先让大家看着上次的数据，不整页报错
   }finally{setSyncing(false)}
 }
 
