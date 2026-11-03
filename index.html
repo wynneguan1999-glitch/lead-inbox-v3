@@ -351,6 +351,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .wake-empty{text-align:center;padding:40px 20px;color:#ccc;font-size:13px}
 .wake-empty-icon{font-size:32px;margin-bottom:10px}
 
+/* ─── 轮转标签 ─── */
+.rot-tag{display:inline-block;font-size:9px;font-family:monospace;padding:1px 5px;border-radius:3px;background:#f0edff;color:#6B5CE7;border:1px solid #dcd8f8;vertical-align:middle;margin-left:4px;white-space:nowrap}
+.rot-orig{font-size:10px;color:#bbb;font-family:monospace;margin-top:1px}
+.btn-claim{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid #1D9E75;background:#f0faf6;color:#1D9E75;cursor:pointer;font-family:inherit;white-space:nowrap;margin-top:3px;transition:all .12s}
+.btn-claim:hover{background:#1D9E75;color:#fff}
+.claimed-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 7px;border-radius:4px;background:#e8f5f0;color:#1D9E75;border:1px solid #c3e8d8;margin-top:3px;white-space:nowrap}
+/* ─── 轮转统计 ─── */
+.rot-stat-wrap{background:#fff;border-radius:12px;padding:20px 22px;margin-top:18px;border:1px solid #eee}
+.rot-stat-title{font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.rot-stat-table{width:100%;border-collapse:collapse;font-size:12px}
+.rot-stat-table th{text-align:left;color:#aaa;font-weight:500;padding:5px 10px 8px;border-bottom:1px solid #f0f0f0}
+.rot-stat-table td{padding:7px 10px;border-bottom:1px solid #f7f7f7;color:#333}
+.rot-stat-table tr:last-child td{border-bottom:none}
+
 .goal-month-pills{display:flex;gap:5px;flex-wrap:wrap}
 .goal-month-pill{padding:3px 11px;border-radius:20px;font-size:12px;border:1px solid #e4e4e4;background:#fff;color:#888;cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap}
 .goal-month-pill:hover{border-color:#bbb;color:#333}
@@ -553,6 +567,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
       </div>
     </div>
     <div class="toolbar-row"><span class="filter-label">负责人</span><div class="pills-row" id="who-pills"><button class="pill on" data-who="all">全部</button></div></div>
+    <div class="toolbar-row"><span class="filter-label">快捷</span><div class="pills-row"><button class="pill" id="rot-filter-pill" onclick="toggleRotFilter()">🔄 轮转线索</button></div></div>
   </div>
 
   <div class="table-wrap">
@@ -593,6 +608,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 <div class="tab-content" id="tab-analytics">
   <div id="analytics-body" style="padding-top:4px">
     <div class="empty">正在加载...</div>
+  </div>
+  <div class="rot-stat-wrap">
+    <div class="rot-stat-title">🔄 轮转接手记录（按月）</div>
+    <div id="rot-stats-container"><div style="color:#bbb;font-size:12px">暂无接手记录</div></div>
   </div>
 </div>
 
@@ -663,15 +682,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 <!-- 全局下拉 -->
 <div class="global-drop" id="global-drop"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ═══════════════════════════════════════════
 // 基础数据 & 配置
 // ═══════════════════════════════════════════
 let C={url:'',key:''};
-let sbClient=null; // Realtime 客户端
 let allLeads=[], allChannels=[], allStatuses=[], allQualities=[], allPriorities=[];
-let fCh='all', fSt='all', fQl=new Set(), fPr=new Set(), fTime='all', fWho='all';
+let fCh='all', fSt='all', fQl=new Set(), fPr=new Set(), fTime='all', fWho='all', fRot=false;
 let newColors={channel:'pink',status:'blue',quality:'teal',priority:'coral'};
 let openDropId=null, openDropType=null;
 let transferLeadId=null, transferSelectedMember=null;
@@ -727,28 +744,7 @@ async function api(path,opts={}){
 
 async function fetchAllLeads(){
   const PAGE=1000;
-  // 第一页顺便问一下总条数（Prefer: count=exact 不会增加返回的数据量，只是响应头里多带一个数字）
-  const first=await fetch(`${C.url}/rest/v1/leads?select=*&order=created_at.desc&limit=${PAGE}&offset=0`,{
-    headers:{'apikey':C.key,'Authorization':`Bearer ${C.key}`,'Prefer':'count=exact'}
-  });
-  if(!first.ok)throw new Error(await first.text());
-  const firstBatch=await first.json();
-  if(firstBatch.length<PAGE)return firstBatch; // 不满一页，肯定已经拿完了
-  const range=first.headers.get('content-range'); // 形如 "0-999/4821"
-  const total=range&&range.includes('/')?parseInt(range.split('/')[1]):null;
-  if(total&&total<=PAGE)return firstBatch;
-  if(total){
-    // 拿到了总数：剩下的页一次性并发请求，总请求量不变，只是不用排队等
-    const pageCount=Math.ceil(total/PAGE);
-    const rest=[];
-    for(let p=1;p<pageCount;p++){
-      rest.push(api(`/leads?select=*&order=created_at.desc&limit=${PAGE}&offset=${p*PAGE}`));
-    }
-    const restBatches=await Promise.all(rest);
-    return firstBatch.concat(...restBatches);
-  }
-  // 拿不到总数（比如响应头被挡住了）：退回原来稳妥的串行分页，保证数据不会漏
-  let all=firstBatch.slice(),offset=PAGE;
+  let all=[],offset=0;
   while(true){
     const batch=await api(`/leads?select=*&order=created_at.desc&limit=${PAGE}&offset=${offset}`);
     all=all.concat(batch);
@@ -758,59 +754,7 @@ async function fetchAllLeads(){
   return all;
 }
 
-// ═══════════════════════════════════════════
-// Realtime 订阅（代替 30 秒全表轮询）
-// ═══════════════════════════════════════════
-function subscribeRealtime(){
-  if(sbClient)return; // 避免重复订阅
-  sbClient=supabase.createClient(C.url,C.key);
-  sbClient.channel('leads-realtime')
-    .on('postgres_changes',{event:'*',schema:'public',table:'leads'},payload=>{
-      if(payload.eventType==='INSERT'){
-        if(!allLeads.find(l=>l.id===payload.new.id))allLeads.unshift(payload.new);
-      }else if(payload.eventType==='UPDATE'){
-        const i=allLeads.findIndex(l=>l.id===payload.new.id);
-        if(i>-1)allLeads[i]=payload.new;
-      }else if(payload.eventType==='DELETE'){
-        allLeads=allLeads.filter(l=>l.id!==payload.old.id);
-      }
-      buildWhoPills();renderFilterPills();applyFilters(false);renderTeam();
-      renderAnalyticsTab();renderGoalTab();renderActiveTab();renderWakeTab();
-    })
-    .subscribe(status=>{
-      setSyncing(status==='SUBSCRIBING');
-      if(status==='SUBSCRIBED')setSyncing(false);
-    });
-}
-
-// ═══════════════════════════════════════════
-// 本地缓存（打开页面先秒开旧数据，不用干等网络）
-// ═══════════════════════════════════════════
-function loadCachedSnapshot(){
-  try{
-    const raw=localStorage.getItem('liSnapshot');
-    if(!raw)return false;
-    const snap=JSON.parse(raw);
-    if(!snap||!Array.isArray(snap.allLeads))return false;
-    allLeads=snap.allLeads;
-    allChannels=snap.allChannels||[];
-    allStatuses=snap.allStatuses||[];
-    allQualities=snap.allQualities||[];
-    allPriorities=snap.allPriorities||[];
-    buildWhoPills();renderFilterPills();applyFilters(false);renderTeam();renderDrawer();
-    renderAnalyticsTab();renderGoalMonthPills();renderGoalTab();renderActiveMonthPills();renderActiveTab();
-    renderWakeMonthPills();renderWakeTab();
-    return true;
-  }catch(e){return false}
-}
-function saveSnapshot(){
-  try{
-    localStorage.setItem('liSnapshot',JSON.stringify({allLeads,allChannels,allStatuses,allQualities,allPriorities}));
-  }catch(e){/* 存储空间不够就跳过，不影响主流程 */}
-}
-
 async function loadAll(){
-  const hasCache=loadCachedSnapshot(); // 有缓存的话先用旧数据秒开一版界面
   setSyncing(true);
   try{
     [allLeads,allChannels,allStatuses,allQualities,allPriorities]=await Promise.all([
@@ -838,12 +782,9 @@ async function loadAll(){
     loadWakeData();
     renderWakeMonthPills();
     renderWakeTab();
-    saveSnapshot(); // 拉到最新数据后更新缓存，供下次打开秒开
+    buildRotationMap();
   }catch(e){
-    if(!hasCache){
-      document.getElementById('tbody').innerHTML=`<div class="empty">加载失败：${esc(e.message)}</div>`;
-    }
-    // 有缓存的话，这次网络失败就先让大家看着上次的数据，不整页报错
+    document.getElementById('tbody').innerHTML=`<div class="empty">加载失败：${esc(e.message)}</div>`;
   }finally{setSyncing(false)}
 }
 
@@ -886,18 +827,27 @@ function getFiltered(){
   const q=document.getElementById('q').value.toLowerCase();
   const{since,until}=getTimeRange();
   return allLeads.filter(l=>{
+    if(fRot&&!rotationMap[l.id])return false;
     if(fCh!=='all'&&l.channel!==fCh)return false;
     if(fSt!=='all'&&l.status!==fSt)return false;
     if(fQl.size>0){const val=l.quality||'__none__';if(!fQl.has(val))return false;}
     if(fPr.size>0){const val=l.priority||'__none__';if(!fPr.has(val))return false;}
-    if(fWho!=='all'&&(l.added_by||'未知')!==fWho)return false;
-    const t=new Date(l.created_at).getTime();
-    if(since&&t<since)return false;
-    if(until&&t>until)return false;
+    if(fWho!=='all'){const rot=rotationMap[l.id];const effOwner=rot?rot.member:(l.added_by||'未知');if(effOwner!==fWho)return false;}
+    if(!fRot){
+      const t=new Date(l.created_at).getTime();
+      if(since&&t<since)return false;
+      if(until&&t>until)return false;
+    }
     if(!q)return true;
     return[l.value,l.added_by,l.channel,l.status,l.quality,l.priority,l.contact_name,l.phone,l.email_contact,l.wechat,l.note]
       .filter(Boolean).some(v=>String(v).toLowerCase().includes(q));
   });
+}
+
+function toggleRotFilter(){
+  fRot=!fRot;
+  document.getElementById('rot-filter-pill').classList.toggle('on',fRot);
+  applyFilters();
 }
 
 function applyFilters(resetPage=true){
@@ -995,7 +945,10 @@ function renderTable(filtered){
     if(l.note){const short=l.note.length>40?l.note.slice(0,40)+'…':l.note;contacts.push(`<span class="contact-item note-item" title="${esc(l.note)}" style="color:#bbb;font-style:italic;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block">${esc(short)}</span>`);}
     const isUrl=l.value.startsWith('http');
     const valHtml=isUrl?`<a href="${esc(l.value)}" target="_blank" title="${esc(l.value)}">${esc(l.value)}</a>`:esc(l.value);
-    const [ab,at]=nameColor(l.added_by);const ini=(l.added_by||'?').charAt(0).toUpperCase();
+    const rotInfo=rotationMap[l.id];
+    const isRot=!!rotInfo;
+    const displayOwner=isRot?rotInfo.member:(l.added_by||'未知');
+    const [ab,at]=nameColor(displayOwner);const ini=displayOwner.charAt(0).toUpperCase();
     const qlHtml=l.quality
       ?`<span class="badge-quality" style="${badgeStyle(qlColor(l.quality))}" onclick="openDrop('${l.id}','ql',this)">${esc(l.quality)}</span>`
       :`<button class="badge-empty" onclick="openDrop('${l.id}','ql',this)">+ 标记</button>`;
@@ -1010,7 +963,13 @@ function renderTable(filtered){
       <div>${prHtml}</div>
       <div class="who" onclick="openTransfer('${l.id}')" title="点击转让">
         <div class="who-av" style="background:${ab};color:${at}">${ini}</div>
-        <span class="who-name">${esc(l.added_by||'未知')}</span>
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:4px"><span class="who-name">${esc(displayOwner)}</span></div>
+          ${isRot?`<div class="rot-orig">原：${esc(l.added_by||'—')}</div>`:''}
+          ${isRot&&l.rotation_claimed_by
+            ?`<div class="claimed-badge">✓ ${esc(l.rotation_claimed_by)} · ${fmtDate(l.rotation_claimed_at)}</div>`
+            :isRot?`<button class="btn-claim" onclick="claimRotation(event,'${l.id}')">✋ 接手</button>`:''}
+        </div>
         <span class="who-icon">⇄</span>
       </div>
       <div class="lead-time">${fmtDate(l.created_at)}</div>
@@ -1964,6 +1923,124 @@ async function wakeUpdateField(leadId,field,value){
 }
 
 // ═══════════════════════════════════════════
+// 轮转线索
+// ═══════════════════════════════════════════
+// ═══════════════════════════════════════════
+// 轮转线索逻辑（嵌入线索管理表格）
+// rotationMap: leadId -> assignedMember
+// ═══════════════════════════════════════════
+let rotationMap={};
+
+function rotHash(str){
+  let h=0;
+  for(let i=0;i<str.length;i++){h=((h<<5)-h+str.charCodeAt(i))|0;}
+  return Math.abs(h);
+}
+
+// 轮转权重配置：名字需与 added_by 完全一致，Ada 完全排除
+const ROT_WEIGHTS={'Ivy':30,'Cuidy':30,'Rowan':30,'Wynne':10};
+
+function buildWeightedPool(weights,excludeOwner){
+  // 按权重展开成数组，用于哈希取模
+  const pool=[];
+  for(const[name,w] of Object.entries(weights)){
+    if(name===excludeOwner)continue;
+    for(let i=0;i<w;i++)pool.push(name);
+  }
+  return pool;
+}
+
+function buildRotationMap(){
+  rotationMap={};
+  const EXCLUDE_STATUS=new Set(['建联中','合作中','已完成','非付费','已放弃']);
+  const EXCLUDED=new Set(['ada','Ada','ADA']);
+  const now=new Date();
+  const oneDay=24*60*60*1000;
+  const oneMonth=30*oneDay;
+
+  const daysSinceEpoch=Math.floor(now.getTime()/oneDay);
+
+  allLeads.forEach(l=>{
+    if(EXCLUDE_STATUS.has(l.status))return;
+    // 用 created_at 判断（updated_at 在 Supabase 不自动维护，不可靠）
+    const ageDays=Math.floor((now-new Date(l.created_at))/oneDay);
+    if(ageDays<30)return;  // 不足1个月，还太新
+    if(ageDays>60)return;  // 超过2个月，停止轮转（最多2轮）
+    const rotRound=Math.floor(ageDays/30)-1; // 0=第1轮(30-60天), 到60天自动退出
+    const owner=(l.added_by||'').trim();
+
+    // 构建按权重展开的池（排除原负责人）
+    const pool=buildWeightedPool(ROT_WEIGHTS,owner);
+    if(!pool.length)return;
+
+    const seed=String(l.id)+'_round'+rotRound+'_day'+daysSinceEpoch;
+    let assignee=pool[rotHash(seed)%pool.length];
+
+    // 第2轮：确保和第1轮不同
+    if(rotRound===1){
+      const seed0=String(l.id)+'_round0_day'+daysSinceEpoch;
+      const prev=pool[rotHash(seed0)%pool.length];
+      if(assignee===prev){
+        // 换一个不同名字的
+        const others=[...new Set(pool)].filter(m=>m!==prev&&m!==owner);
+        if(others.length){
+          const seed2=String(l.id)+'_round1alt_day'+daysSinceEpoch;
+          assignee=others[rotHash(seed2)%others.length];
+        }
+      }
+    }
+
+    rotationMap[l.id]={member:assignee,round:rotRound+1};
+  });
+}
+
+// ─── 接手轮转线索 ───
+async function claimRotation(evt,leadId){
+  evt.stopPropagation();
+  const btn=evt.currentTarget;
+  btn.disabled=true;btn.textContent='保存中…';
+  // 弹窗让当前用户确认自己的名字
+  const name=prompt('请输入你的名字（将记录为接手人）：','');
+  if(!name||!name.trim()){btn.disabled=false;btn.innerHTML='✋ 接手';return;}
+  const claimedBy=name.trim();
+  const claimedAt=new Date().toISOString();
+  try{
+    await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify({rotation_claimed_by:claimedBy,rotation_claimed_at:claimedAt})});
+    const l=allLeads.find(x=>x.id===leadId);
+    if(l){l.rotation_claimed_by=claimedBy;l.rotation_claimed_at=claimedAt;}
+    applyFilters(false);
+    renderRotationStats();
+  }catch(e){btn.disabled=false;btn.innerHTML='✋ 接手';alert('保存失败，请重试');}
+}
+
+// ─── 轮转接手统计 ───
+function renderRotationStats(){
+  const el=document.getElementById('rot-stats-container');
+  if(!el)return;
+  // 按月、按人统计
+  const byMonthMember={};
+  allLeads.forEach(l=>{
+    if(!l.rotation_claimed_by||!l.rotation_claimed_at)return;
+    const d=new Date(l.rotation_claimed_at);
+    const month=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if(!byMonthMember[month])byMonthMember[month]={};
+    const m=l.rotation_claimed_by;
+    byMonthMember[month][m]=(byMonthMember[month][m]||0)+1;
+  });
+  const months=Object.keys(byMonthMember).sort().reverse();
+  const members=[...new Set(allLeads.filter(l=>l.rotation_claimed_by).map(l=>l.rotation_claimed_by))].sort();
+  if(!months.length){el.innerHTML='<div style="color:#bbb;font-size:12px;padding:8px 0">暂无接手记录</div>';return;}
+  let html=`<table class="rot-stat-table"><thead><tr><th>月份</th>${members.map(m=>`<th>${esc(m)}</th>`).join('')}<th>合计</th></tr></thead><tbody>`;
+  months.forEach(mo=>{
+    const row=byMonthMember[mo];
+    const total=Object.values(row).reduce((a,b)=>a+b,0);
+    html+=`<tr><td>${mo}</td>${members.map(m=>`<td>${row[m]||0}</td>`).join('')}<td><b>${total}</b></td></tr>`;
+  });
+  html+=`</tbody></table>`;
+  el.innerHTML=html;
+}
+
+// ═══════════════════════════════════════════
 // updateGoal (existing, kept here)
 function updateGoal(){
   const elv=document.getElementById('goal-input-val');
@@ -2023,7 +2100,7 @@ async function deleteLead(id){
     buildWhoPills();
     const f=getFiltered(),tp=Math.max(1,Math.ceil(f.length/PAGE_SIZE));
     if(currentPage>tp)currentPage=tp;
-    renderStats(f);renderTable(f);renderTeam();renderAnalyticsTab();renderGoalTab();
+    renderStats(f);renderTable(f);renderTeam();renderAnalyticsTab();renderGoalTab();renderRotationStats();
   }catch(e){alert('删除失败：'+e.message);}
 }
 
@@ -2043,7 +2120,7 @@ function saveConfig(){
   if(!url||!key){alert('请填写完整信息');return}
   C={url,key};localStorage.setItem('liCfg',JSON.stringify(C));
   document.getElementById('overlay').classList.add('hidden');
-  loadAll();subscribeRealtime();
+  loadAll();setInterval(loadAll,30000);
 }
 function resetCfg(){localStorage.removeItem('liCfg');location.reload()}
 
@@ -2079,7 +2156,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-connect').addEventListener('click',saveConfig);
 
   const saved=localStorage.getItem('liCfg');
-  if(saved){try{C=JSON.parse(saved);document.getElementById('overlay').classList.add('hidden');loadAll();subscribeRealtime();}catch(e){}}
+  if(saved){try{C=JSON.parse(saved);document.getElementById('overlay').classList.add('hidden');loadAll();setInterval(loadAll,30000);}catch(e){}}
 });
 
 </script>
