@@ -567,7 +567,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
       </div>
     </div>
     <div class="toolbar-row"><span class="filter-label">负责人</span><div class="pills-row" id="who-pills"><button class="pill on" data-who="all">全部</button></div></div>
-    <div class="toolbar-row"><span class="filter-label">快捷</span><div class="pills-row"><button class="pill" id="rot-filter-pill" onclick="toggleRotFilter()">🔄 轮转线索</button></div></div>
+    <div class="toolbar-row"><span class="filter-label">快捷</span><div class="pills-row"><button class="pill" id="rot-filter-pill" onclick="toggleRotFilter()">🔄 轮转线索</button><button class="pill" id="claimed-filter-pill" onclick="toggleClaimedFilter()">✋ 接手线索</button><button class="pill" id="invalid-filter-pill" onclick="toggleInvalidFilter()">❌ 无效线索</button></div></div>
   </div>
 
   <div class="table-wrap">
@@ -688,7 +688,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 // ═══════════════════════════════════════════
 let C={url:'',key:''};
 let allLeads=[], allChannels=[], allStatuses=[], allQualities=[], allPriorities=[];
-let fCh='all', fSt='all', fQl=new Set(), fPr=new Set(), fTime='all', fWho='all', fRot=false;
+let fCh='all', fSt='all', fQl=new Set(), fPr=new Set(), fTime='all', fWho='all', fRot=false, fClaimed=false, fInvalid=false;
 let newColors={channel:'pink',status:'blue',quality:'teal',priority:'coral'};
 let openDropId=null, openDropType=null;
 let transferLeadId=null, transferSelectedMember=null;
@@ -828,6 +828,8 @@ function getFiltered(){
   const{since,until}=getTimeRange();
   return allLeads.filter(l=>{
     if(fRot&&!rotationMap[l.id])return false;
+    if(fClaimed){if(!l.rotation_claimed_by||l.rotation_claimed_by==='__invalid__')return false;}
+    if(fInvalid){if(l.rotation_claimed_by!=='__invalid__')return false;}
     if(fCh!=='all'&&l.channel!==fCh)return false;
     if(fSt!=='all'&&l.status!==fSt)return false;
     if(fQl.size>0){const val=l.quality||'__none__';if(!fQl.has(val))return false;}
@@ -846,8 +848,43 @@ function getFiltered(){
 
 function toggleRotFilter(){
   fRot=!fRot;
+  if(fRot){fClaimed=false;fInvalid=false;document.getElementById('claimed-filter-pill').classList.remove('on');document.getElementById('invalid-filter-pill').classList.remove('on');}
   document.getElementById('rot-filter-pill').classList.toggle('on',fRot);
   applyFilters();
+}
+
+function toggleClaimedFilter(){
+  fClaimed=!fClaimed;
+  if(fClaimed){fRot=false;fInvalid=false;document.getElementById('rot-filter-pill').classList.remove('on');document.getElementById('invalid-filter-pill').classList.remove('on');}
+  document.getElementById('claimed-filter-pill').classList.toggle('on',fClaimed);
+  applyFilters();
+}
+
+function toggleInvalidFilter(){
+  fInvalid=!fInvalid;
+  if(fInvalid){fRot=false;fClaimed=false;document.getElementById('rot-filter-pill').classList.remove('on');document.getElementById('claimed-filter-pill').classList.remove('on');}
+  document.getElementById('invalid-filter-pill').classList.toggle('on',fInvalid);
+  applyFilters();
+}
+
+async function markInvalid(evt,leadId){
+  evt.stopPropagation();
+  const btn=evt.currentTarget;
+  const l=allLeads.find(x=>x.id===leadId);
+  const isCurrentlyInvalid=l&&l.rotation_claimed_by==='__invalid__';
+  btn.disabled=true;btn.textContent='处理中…';
+  try{
+    if(isCurrentlyInvalid){
+      // 撤回：清空标记
+      await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify({rotation_claimed_by:null,rotation_claimed_at:null})});
+      if(l){l.rotation_claimed_by=null;l.rotation_claimed_at=null;}
+    }else{
+      await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify({rotation_claimed_by:'__invalid__',rotation_claimed_at:new Date().toISOString()})});
+      if(l){l.rotation_claimed_by='__invalid__';l.rotation_claimed_at=new Date().toISOString();}
+    }
+    applyFilters(false);
+    renderRotationStats();
+  }catch(e){btn.disabled=false;btn.textContent='⚠️ 无效';alert('保存失败，请重试');}
 }
 
 function applyFilters(resetPage=true){
@@ -966,9 +1003,11 @@ function renderTable(filtered){
         <div style="min-width:0">
           <div style="display:flex;align-items:center;gap:4px"><span class="who-name">${esc(displayOwner)}</span></div>
           ${isRot?`<div class="rot-orig">原：${esc(l.added_by||'—')}</div>`:''}
-          ${isRot&&l.rotation_claimed_by
+          ${isRot&&l.rotation_claimed_by==='__invalid__'
+            ?`<button class="btn-claim" onclick="markInvalid(event,'${l.id}')" style="border-color:#c8960c;color:#9a6f00;background:#fffbe6;margin-top:3px">⚠️ 无效</button>`
+            :isRot&&l.rotation_claimed_by
             ?`<div class="claimed-badge">✓ ${esc(l.rotation_claimed_by)} · ${fmtDate(l.rotation_claimed_at)}</div>`
-            :isRot?`<button class="btn-claim" onclick="claimRotation(event,'${l.id}')">✋ 接手</button>`:''}
+            :isRot?`<div style="display:flex;gap:4px;margin-top:3px"><button class="btn-claim" onclick="claimRotation(event,'${l.id}')">✋ 接手</button><button class="btn-claim" onclick="markInvalid(event,'${l.id}')" style="border-color:#c8960c;color:#9a6f00;background:#fffbe6">⚠️ 无效</button></div>`:''}
         </div>
         <span class="who-icon">⇄</span>
       </div>
@@ -2017,10 +2056,11 @@ async function claimRotation(evt,leadId){
 function renderRotationStats(){
   const el=document.getElementById('rot-stats-container');
   if(!el)return;
-  // 按月、按人统计
   const byMonthMember={};
+  let invalidCount=0;
   allLeads.forEach(l=>{
     if(!l.rotation_claimed_by||!l.rotation_claimed_at)return;
+    if(l.rotation_claimed_by==='__invalid__'){invalidCount++;return;}
     const d=new Date(l.rotation_claimed_at);
     const month=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     if(!byMonthMember[month])byMonthMember[month]={};
@@ -2028,15 +2068,19 @@ function renderRotationStats(){
     byMonthMember[month][m]=(byMonthMember[month][m]||0)+1;
   });
   const months=Object.keys(byMonthMember).sort().reverse();
-  const members=[...new Set(allLeads.filter(l=>l.rotation_claimed_by).map(l=>l.rotation_claimed_by))].sort();
-  if(!months.length){el.innerHTML='<div style="color:#bbb;font-size:12px;padding:8px 0">暂无接手记录</div>';return;}
-  let html=`<table class="rot-stat-table"><thead><tr><th>月份</th>${members.map(m=>`<th>${esc(m)}</th>`).join('')}<th>合计</th></tr></thead><tbody>`;
-  months.forEach(mo=>{
-    const row=byMonthMember[mo];
-    const total=Object.values(row).reduce((a,b)=>a+b,0);
-    html+=`<tr><td>${mo}</td>${members.map(m=>`<td>${row[m]||0}</td>`).join('')}<td><b>${total}</b></td></tr>`;
-  });
-  html+=`</tbody></table>`;
+  const members=[...new Set(allLeads.filter(l=>l.rotation_claimed_by&&l.rotation_claimed_by!=='__invalid__').map(l=>l.rotation_claimed_by))].sort();
+  let html='';
+  if(invalidCount>0)html+=`<div style="font-size:12px;color:#9a6f00;margin-bottom:10px">⚠️ 已标无效线索：<b>${invalidCount}</b> 条</div>`;
+  if(!months.length&&!invalidCount){el.innerHTML='<div style="color:#bbb;font-size:12px;padding:8px 0">暂无接手记录</div>';return;}
+  if(months.length){
+    html+=`<table class="rot-stat-table"><thead><tr><th>月份</th>${members.map(m=>`<th>${esc(m)}</th>`).join('')}<th>合计</th></tr></thead><tbody>`;
+    months.forEach(mo=>{
+      const row=byMonthMember[mo];
+      const total=Object.values(row).reduce((a,b)=>a+b,0);
+      html+=`<tr><td>${mo}</td>${members.map(m=>`<td>${row[m]||0}</td>`).join('')}<td><b>${total}</b></td></tr>`;
+    });
+    html+=`</tbody></table>`;
+  }
   el.innerHTML=html;
 }
 
