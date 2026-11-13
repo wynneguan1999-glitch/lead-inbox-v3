@@ -771,7 +771,7 @@ async function loadAll(){
     if(spg)try{personGoals=JSON.parse(spg);}catch(e){}
     buildWhoPills();
     renderFilterPills();
-    applyFilters(false);  // 自动刷新不重置页码
+    applyFilters(false);
     renderTeam();
     renderDrawer();
     renderAnalyticsTab();
@@ -783,6 +783,7 @@ async function loadAll(){
     renderWakeMonthPills();
     renderWakeTab();
     buildRotationMap();
+    renderRotationStats();
   }catch(e){
     document.getElementById('tbody').innerHTML=`<div class="empty">加载失败：${esc(e.message)}</div>`;
   }finally{setSyncing(false)}
@@ -1006,7 +1007,7 @@ function renderTable(filtered){
           ${isRot&&l.rotation_claimed_by==='__invalid__'
             ?`<button class="btn-claim" onclick="markInvalid(event,'${l.id}')" style="border-color:#c8960c;color:#9a6f00;background:#fffbe6;margin-top:3px">⚠️ 无效</button>`
             :isRot&&l.rotation_claimed_by
-            ?`<div class="claimed-badge">✓ ${esc(l.rotation_claimed_by)} · ${fmtDate(l.rotation_claimed_at)}</div>`
+            ?`<button class="claimed-badge" onclick="claimRotation(event,'${l.id}')" style="cursor:pointer;border:none;text-align:left">✓ ${esc(l.rotation_claimed_by)} · ${fmtDate(l.rotation_claimed_at)}</button>`
             :isRot?`<div style="display:flex;gap:4px;margin-top:3px"><button class="btn-claim" onclick="claimRotation(event,'${l.id}')">✋ 接手</button><button class="btn-claim" onclick="markInvalid(event,'${l.id}')" style="border-color:#c8960c;color:#9a6f00;background:#fffbe6">⚠️ 无效</button></div>`:''}
         </div>
         <span class="who-icon">⇄</span>
@@ -1080,9 +1081,22 @@ document.addEventListener('click',e=>{
 });
 
 async function updateLeadField(id,field,value){
+  const l=allLeads.find(x=>x.id===id);
+  const oldValue=l?l[field]:undefined;
+  // 乐观更新：先改本地数据和界面，不等网络
+  if(l)l[field]=value;
+  applyFilters(false);
+  renderTeam();renderAnalyticsTab();renderGoalTab();
   setSyncing(true);
-  try{await api(`/leads?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({[field]:value})});const l=allLeads.find(x=>x.id===id);if(l)l[field]=value;applyFilters(false);renderTeam();renderAnalyticsTab();renderGoalTab();}
-  catch(e){alert('更新失败：'+e.message);}finally{setSyncing(false);}
+  try{
+    await api(`/leads?id=eq.${id}`,{method:'PATCH',body:JSON.stringify({[field]:value})});
+  }catch(e){
+    // 请求失败：回退本地数据和界面
+    if(l)l[field]=oldValue;
+    applyFilters(false);
+    renderTeam();renderAnalyticsTab();renderGoalTab();
+    alert('更新失败：'+e.message);
+  }finally{setSyncing(false);}
 }
 
 // ═══════════════════════════════════════════
@@ -2037,19 +2051,25 @@ function buildRotationMap(){
 async function claimRotation(evt,leadId){
   evt.stopPropagation();
   const btn=evt.currentTarget;
-  btn.disabled=true;btn.textContent='保存中…';
-  // 弹窗让当前用户确认自己的名字
-  const name=prompt('请输入你的名字（将记录为接手人）：','');
-  if(!name||!name.trim()){btn.disabled=false;btn.innerHTML='✋ 接手';return;}
-  const claimedBy=name.trim();
-  const claimedAt=new Date().toISOString();
+  const l=allLeads.find(x=>x.id===leadId);
+  const alreadyClaimed=l&&l.rotation_claimed_by&&l.rotation_claimed_by!=='__invalid__';
+  btn.disabled=true;btn.textContent='处理中…';
   try{
-    await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify({rotation_claimed_by:claimedBy,rotation_claimed_at:claimedAt})});
-    const l=allLeads.find(x=>x.id===leadId);
-    if(l){l.rotation_claimed_by=claimedBy;l.rotation_claimed_at=claimedAt;}
+    if(alreadyClaimed){
+      // 撤回接手
+      await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify({rotation_claimed_by:null,rotation_claimed_at:null})});
+      if(l){l.rotation_claimed_by=null;l.rotation_claimed_at=null;}
+    }else{
+      const name=prompt('请输入你的名字（将记录为接手人）：','');
+      if(!name||!name.trim()){btn.disabled=false;btn.innerHTML='✋ 接手';return;}
+      const claimedBy=name.trim();
+      const claimedAt=new Date().toISOString();
+      await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify({rotation_claimed_by:claimedBy,rotation_claimed_at:claimedAt})});
+      if(l){l.rotation_claimed_by=claimedBy;l.rotation_claimed_at=claimedAt;}
+    }
     applyFilters(false);
     renderRotationStats();
-  }catch(e){btn.disabled=false;btn.innerHTML='✋ 接手';alert('保存失败，请重试');}
+  }catch(e){btn.disabled=false;btn.innerHTML=alreadyClaimed?'✓ 已接手':'✋ 接手';alert('保存失败，请重试');}
 }
 
 // ─── 轮转接手统计 ───
