@@ -828,16 +828,19 @@ function clearCustomDate(){
 function getFiltered(){
   const q=document.getElementById('q').value.toLowerCase();
   const{since,until}=getTimeRange();
+  const rotMode=fClaimed||fInvalid; // 接手/无效模式：只过滤 rotation 字段+人员+搜索词，忽略其他条件
   return allLeads.filter(l=>{
     if(fRot&&!rotationMap[l.id])return false;
     if(fClaimed){if(!l.rotation_claimed_by||l.rotation_claimed_by==='__invalid__')return false;}
     if(fInvalid){if(l.rotation_claimed_by!=='__invalid__')return false;}
-    if(fCh!=='all'&&l.channel!==fCh)return false;
-    if(fSt!=='all'&&l.status!==fSt)return false;
-    if(fQl.size>0){const val=l.quality||'__none__';if(!fQl.has(val))return false;}
-    if(fPr.size>0){const val=l.priority||'__none__';if(!fPr.has(val))return false;}
+    if(!rotMode){
+      if(fCh!=='all'&&l.channel!==fCh)return false;
+      if(fSt!=='all'&&l.status!==fSt)return false;
+      if(fQl.size>0){const val=l.quality||'__none__';if(!fQl.has(val))return false;}
+      if(fPr.size>0){const val=l.priority||'__none__';if(!fPr.has(val))return false;}
+    }
     if(fWho!=='all'){const rot=rotationMap[l.id];const claimed=rot&&l.rotation_claimed_by&&l.rotation_claimed_by!=='__invalid__'?l.rotation_claimed_by:null;const effOwner=claimed||(rot?rot.member:(l.added_by||'未知'));if(effOwner.toLowerCase()!==fWho.toLowerCase())return false;}
-    if(!fRot){
+    if(!fRot&&!rotMode){
       const t=new Date(l.created_at).getTime();
       if(since&&t<since)return false;
       if(until&&t>until)return false;
