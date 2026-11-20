@@ -513,6 +513,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
   </div>
   <div class="nav-right">
     <div class="sync-status"><div class="sync-dot" id="sdot"></div><span id="stxt">已同步</span></div>
+    <button class="nav-btn" id="current-user-btn" onclick="setCurrentUser()" title="点击修改当前用户">👤 <span id="current-user-label">设置姓名</span></button>
     <button class="nav-btn" onclick="loadAll()">刷新</button>
     <button class="nav-btn" onclick="openDrawer()">⚙ 自定义</button>
     <button class="nav-btn" onclick="resetCfg()">重新配置</button>
@@ -835,7 +836,7 @@ function getFiltered(){
     if(fSt!=='all'&&l.status!==fSt)return false;
     if(fQl.size>0){const val=l.quality||'__none__';if(!fQl.has(val))return false;}
     if(fPr.size>0){const val=l.priority||'__none__';if(!fPr.has(val))return false;}
-    if(fWho!=='all'){const rot=rotationMap[l.id];const effOwner=rot?rot.member:(l.added_by||'未知');if(effOwner!==fWho)return false;}
+    if(fWho!=='all'){const rot=rotationMap[l.id];const claimed=rot&&l.rotation_claimed_by&&l.rotation_claimed_by!=='__invalid__'?l.rotation_claimed_by:null;const effOwner=claimed||(rot?rot.member:(l.added_by||'未知'));if(effOwner.toLowerCase()!==fWho.toLowerCase())return false;}
     if(!fRot){
       const t=new Date(l.created_at).getTime();
       if(since&&t<since)return false;
@@ -870,13 +871,13 @@ function toggleInvalidFilter(){
 
 async function markInvalid(evt,leadId){
   evt.stopPropagation();
+  evt.preventDefault();
   const btn=evt.currentTarget;
   const l=allLeads.find(x=>x.id===leadId);
   const isCurrentlyInvalid=l&&l.rotation_claimed_by==='__invalid__';
   btn.disabled=true;btn.textContent='处理中…';
   try{
     if(isCurrentlyInvalid){
-      // 撤回：清空标记
       await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify({rotation_claimed_by:null,rotation_claimed_at:null})});
       if(l){l.rotation_claimed_by=null;l.rotation_claimed_at=null;}
     }else{
@@ -948,15 +949,17 @@ function setFPr(v){
 }
 
 function buildWhoPills(){
-  const names=new Set(allLeads.map(l=>l.added_by||'未知').filter(Boolean));
+  // 按小写去重，保留首次出现的原始大小写
+  const seen=new Map();
+  allLeads.forEach(l=>{const n=(l.added_by||'未知').trim();if(n){const k=n.toLowerCase();if(!seen.has(k))seen.set(k,n);}});
   let h=`<button class="pill on" data-who="all">全部</button>`;
-  names.forEach(n=>{h+=`<button class="pill" data-who="${esc(n)}">${esc(n)}</button>`;});
+  seen.forEach(n=>{h+=`<button class="pill" data-who="${esc(n)}">${esc(n)}</button>`;});
   document.getElementById('who-pills').innerHTML=h;
   document.querySelectorAll('#who-pills .pill').forEach(p=>{
     p.addEventListener('click',()=>{fWho=p.dataset.who;syncWhoPills();applyFilters();renderTeam();});
   });
 }
-function syncWhoPills(){document.querySelectorAll('#who-pills .pill').forEach(p=>p.classList.toggle('on',p.dataset.who===fWho));}
+function syncWhoPills(){document.querySelectorAll('#who-pills .pill').forEach(p=>p.classList.toggle('on',p.dataset.who.toLowerCase()===fWho.toLowerCase()||p.dataset.who===fWho));}
 
 // ═══════════════════════════════════════════
 // 表格
@@ -985,7 +988,8 @@ function renderTable(filtered){
     const valHtml=isUrl?`<a href="${esc(l.value)}" target="_blank" title="${esc(l.value)}">${esc(l.value)}</a>`:esc(l.value);
     const rotInfo=rotationMap[l.id];
     const isRot=!!rotInfo;
-    const displayOwner=isRot?rotInfo.member:(l.added_by||'未知');
+    const rotClaimed=isRot&&l.rotation_claimed_by&&l.rotation_claimed_by!=='__invalid__';
+    const displayOwner=rotClaimed?l.rotation_claimed_by:isRot?rotInfo.member:(l.added_by||'未知');
     const [ab,at]=nameColor(displayOwner);const ini=displayOwner.charAt(0).toUpperCase();
     const qlHtml=l.quality
       ?`<span class="badge-quality" style="${badgeStyle(qlColor(l.quality))}" onclick="openDrop('${l.id}','ql',this)">${esc(l.quality)}</span>`
@@ -999,18 +1003,19 @@ function renderTable(filtered){
       <div><span class="badge" style="${badgeStyle(stColor(l.status))}" onclick="openDrop('${l.id}','st',this)">${esc(l.status||'—')}</span></div>
       <div>${qlHtml}</div>
       <div>${prHtml}</div>
-      <div class="who" onclick="openTransfer('${l.id}')" title="点击转让">
-        <div class="who-av" style="background:${ab};color:${at}">${ini}</div>
-        <div style="min-width:0">
-          <div style="display:flex;align-items:center;gap:4px"><span class="who-name">${esc(displayOwner)}</span></div>
-          ${isRot?`<div class="rot-orig">原：${esc(l.added_by||'—')}</div>`:''}
-          ${isRot&&l.rotation_claimed_by==='__invalid__'
-            ?`<button class="btn-claim" onclick="markInvalid(event,'${l.id}')" style="border-color:#c8960c;color:#9a6f00;background:#fffbe6;margin-top:3px">⚠️ 无效</button>`
-            :isRot&&l.rotation_claimed_by
-            ?`<button class="claimed-badge" onclick="claimRotation(event,'${l.id}')" style="cursor:pointer;border:none;text-align:left">✓ ${esc(l.rotation_claimed_by)} · ${fmtDate(l.rotation_claimed_at)}</button>`
-            :isRot?`<div style="display:flex;gap:4px;margin-top:3px"><button class="btn-claim" onclick="claimRotation(event,'${l.id}')">✋ 接手</button><button class="btn-claim" onclick="markInvalid(event,'${l.id}')" style="border-color:#c8960c;color:#9a6f00;background:#fffbe6">⚠️ 无效</button></div>`:''}
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <div class="who" onclick="openTransfer('${l.id}')" title="点击转让">
+          <div class="who-av" style="background:${ab};color:${at}">${ini}</div>
+          <div style="min-width:0">
+            <div style="display:flex;align-items:center;gap:4px"><span class="who-name">${esc(displayOwner)}</span></div>
+            ${isRot?`<div class="rot-orig">原：${esc(l.added_by||'—')}</div>`:''}
+          </div>
         </div>
-        <span class="who-icon">⇄</span>
+        ${isRot&&l.rotation_claimed_by==='__invalid__'
+          ?`<button class="btn-claim" onclick="markInvalid(event,'${l.id}')" style="border-color:#c8960c;color:#9a6f00;background:#fffbe6">⚠️ 无效（点击撤回）</button>`
+          :isRot&&l.rotation_claimed_by
+          ?`<button class="claimed-badge" onclick="claimRotation(event,'${l.id}')" style="cursor:pointer;border:none;text-align:left" title="点击撤回接手">✓ ${esc(l.rotation_claimed_by)} · ${fmtDate(l.rotation_claimed_at)}</button>`
+          :isRot?`<div style="display:flex;gap:4px"><button class="btn-claim" onclick="claimRotation(event,'${l.id}')">✋ 接手</button><button class="btn-claim" onclick="markInvalid(event,'${l.id}')" style="border-color:#c8960c;color:#9a6f00;background:#fffbe6">⚠️ 无效</button></div>`:''}
       </div>
       <div class="lead-time">${fmtDate(l.created_at)}</div>
       <div class="row-btns">
@@ -1426,7 +1431,7 @@ function openTransfer(leadId){
   document.getElementById('transfer-desc').textContent=`「${(lead.value||'').slice(0,30)}」当前负责人：${lead.added_by||'未知'}`;
   const counts={};allLeads.forEach(l=>{const n=l.added_by||'未知';counts[n]=(counts[n]||0)+1;});
   document.getElementById('member-list').innerHTML=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).map(name=>{
-    const[ab,at]=nameColor(name);const isCur=name===(lead.added_by||'未知');
+    const[ab,at]=nameColor(name);const isCur=name.toLowerCase()===(lead.added_by||'未知').toLowerCase();
     return`<div class="member-opt${isCur?' selected':''}" data-name="${esc(name)}" onclick="selectMember('${esc(name)}',this)">
       <div class="m-av" style="background:${ab};color:${at}">${name.charAt(0).toUpperCase()}</div>
       <span class="m-name">${esc(name)}${isCur?' <span style="font-size:11px;color:#bbb;font-weight:400">（当前）</span>':''}</span>
@@ -1440,7 +1445,7 @@ function selectMember(name,el){
   transferSelectedMember=name;
   document.querySelectorAll('.member-opt').forEach(x=>x.classList.remove('selected'));el.classList.add('selected');
   const lead=allLeads.find(l=>l.id===transferLeadId);
-  document.getElementById('btn-confirm-transfer').disabled=name===((lead&&lead.added_by)||'未知');
+  document.getElementById('btn-confirm-transfer').disabled=name.toLowerCase()===(((lead&&lead.added_by)||'未知').toLowerCase());
 }
 async function confirmTransfer(){
   if(!transferLeadId||!transferSelectedMember)return;
@@ -1643,10 +1648,10 @@ function renderGoalTab(){
   // 每人数据（当月）
   const monthGoals=personGoals[goalMonth]||{};
   const personData=names.map(name=>{
-    const leads=monthLeads.filter(l=>(l.added_by||'').trim()===name);
+    const leads=monthLeads.filter(l=>(l.added_by||'').trim().toLowerCase()===name.toLowerCase());
     const total=leads.length;
     // 合作数：该人名下，当月 updated_at 切换到合作状态的线索（不限当月录入）
-    const conv=allLeads.filter(l=>(l.added_by||'').trim()===name&&convInGoalMonth(l)).length;
+    const conv=allLeads.filter(l=>(l.added_by||'').trim().toLowerCase()===name.toLowerCase()&&convInGoalMonth(l)).length;
     const target=monthGoals[name]!==undefined?monthGoals[name]:10;
     const remaining=Math.max(0,target-conv);
 
@@ -1661,7 +1666,7 @@ function renderGoalTab(){
 
     // 该人各渠道全量历史（用于个人转化率，比当月更稳定）
     const pGlobalMap={};
-    allLeads.filter(l=>(l.added_by||'').trim()===name).forEach(l=>{
+    allLeads.filter(l=>(l.added_by||'').trim().toLowerCase()===name.toLowerCase()).forEach(l=>{
       const c=l.channel||'其他';
       if(!pGlobalMap[c])pGlobalMap[c]={t:0,conv:0};
       pGlobalMap[c].t++;
@@ -1997,7 +2002,7 @@ function buildWeightedPool(weights,excludeOwner){
   // 按权重展开成数组，用于哈希取模
   const pool=[];
   for(const[name,w] of Object.entries(weights)){
-    if(name===excludeOwner)continue;
+    if(name.toLowerCase()===(excludeOwner||'').toLowerCase())continue;
     for(let i=0;i<w;i++)pool.push(name);
   }
   return pool;
@@ -2026,18 +2031,18 @@ function buildRotationMap(){
     const pool=buildWeightedPool(ROT_WEIGHTS,owner);
     if(!pool.length)return;
 
-    const seed=String(l.id)+'_round'+rotRound+'_day'+daysSinceEpoch;
+    const seed=String(l.id)+'_round'+rotRound;
     let assignee=pool[rotHash(seed)%pool.length];
 
     // 第2轮：确保和第1轮不同
     if(rotRound===1){
-      const seed0=String(l.id)+'_round0_day'+daysSinceEpoch;
+      const seed0=String(l.id)+'_round0';
       const prev=pool[rotHash(seed0)%pool.length];
       if(assignee===prev){
         // 换一个不同名字的
         const others=[...new Set(pool)].filter(m=>m!==prev&&m!==owner);
         if(others.length){
-          const seed2=String(l.id)+'_round1alt_day'+daysSinceEpoch;
+          const seed2=String(l.id)+'_round1alt';
           assignee=others[rotHash(seed2)%others.length];
         }
       }
@@ -2048,28 +2053,55 @@ function buildRotationMap(){
 }
 
 // ─── 接手轮转线索 ───
+function setCurrentUser(){
+  const cur=localStorage.getItem('liCurrentUser')||'';
+  const name=prompt('输入你的名字（之后接手线索时自动填入）：',cur);
+  if(name===null)return;
+  const trimmed=name.trim();
+  localStorage.setItem('liCurrentUser',trimmed);
+  document.getElementById('current-user-label').textContent=trimmed||'设置姓名';
+}
+
+function getCurrentUser(){
+  return localStorage.getItem('liCurrentUser')||'';
+}
+
 async function claimRotation(evt,leadId){
   evt.stopPropagation();
+  evt.preventDefault();
   const btn=evt.currentTarget;
   const l=allLeads.find(x=>x.id===leadId);
   const alreadyClaimed=l&&l.rotation_claimed_by&&l.rotation_claimed_by!=='__invalid__';
-  btn.disabled=true;btn.textContent='处理中…';
-  try{
-    if(alreadyClaimed){
-      // 撤回接手
+
+  if(alreadyClaimed){
+    // 撤回接手：只清 rotation 字段，added_by 不动
+    btn.disabled=true;btn.textContent='撤回中…';
+    try{
       await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify({rotation_claimed_by:null,rotation_claimed_at:null})});
       if(l){l.rotation_claimed_by=null;l.rotation_claimed_at=null;}
-    }else{
-      const name=prompt('请输入你的名字（将记录为接手人）：','');
-      if(!name||!name.trim()){btn.disabled=false;btn.innerHTML='✋ 接手';return;}
-      const claimedBy=name.trim();
-      const claimedAt=new Date().toISOString();
-      await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify({rotation_claimed_by:claimedBy,rotation_claimed_at:claimedAt})});
-      if(l){l.rotation_claimed_by=claimedBy;l.rotation_claimed_at=claimedAt;}
-    }
-    applyFilters(false);
-    renderRotationStats();
-  }catch(e){btn.disabled=false;btn.innerHTML=alreadyClaimed?'✓ 已接手':'✋ 接手';alert('保存失败，请重试');}
+      applyFilters(false);renderRotationStats();
+    }catch(e){btn.disabled=false;alert('撤回失败，请重试');}
+    return;
+  }
+
+  // 获取当前用户名
+  let claimedBy=getCurrentUser();
+  if(!claimedBy){
+    claimedBy=prompt('请先设置你的名字：','');
+    if(!claimedBy||!claimedBy.trim()){return;}
+    claimedBy=claimedBy.trim();
+    localStorage.setItem('liCurrentUser',claimedBy);
+    document.getElementById('current-user-label').textContent=claimedBy;
+  }
+
+  btn.disabled=true;btn.textContent='接手中…';
+  const claimedAt=new Date().toISOString();
+  try{
+    // 只更新 rotation 字段，added_by 保持原值不变
+    await api(`/leads?id=eq.${leadId}`,{method:'PATCH',body:JSON.stringify({rotation_claimed_by:claimedBy,rotation_claimed_at:claimedAt})});
+    if(l){l.rotation_claimed_by=claimedBy;l.rotation_claimed_at=claimedAt;}
+    applyFilters(false);renderRotationStats();
+  }catch(e){btn.disabled=false;btn.innerHTML='✋ 接手';alert('保存失败，请重试');}
 }
 
 // ─── 轮转接手统计 ───
@@ -2206,6 +2238,10 @@ function initTabs(){
 // 初始化
 // ═══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded',()=>{
+  // 恢复当前用户名
+  const savedUser=localStorage.getItem('liCurrentUser')||'';
+  if(savedUser)document.getElementById('current-user-label').textContent=savedUser;
+
   initTabs();
 
   document.getElementById('time-pills').addEventListener('click',e=>{
